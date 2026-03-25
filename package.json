@@ -9,12 +9,15 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "compile": "TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat compile --config hardhat.config.cts",
-    "deploy": "TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/deploy.cts --network eth-sepolia --config hardhat.config.cts"
+    "test": "npx tsx test/e2e-contract.ts",
+    "test:read": "npx tsx test/e2e-contract.ts --read-only",
+    "compile": "npx cross-env TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat compile --config hardhat.config.cts",
+    "deploy": "npx cross-env TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/deploy.cts --network eth-sepolia --config hardhat.config.cts"
   },
   "dependencies": {
     "@cofhe/sdk": "^0.4.0",
     "@fhenixprotocol/cofhe-contracts": "^0.1.0",
+    "@metamask/sdk": "^0.34.0",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-query": "^5.91.3",
     "@vitejs/plugin-react": "^5.0.4",
@@ -29,7 +32,6 @@
     "react-router-dom": "^7.13.1",
     "tailwind-merge": "^3.5.0",
     "viem": "^2.47.5",
-    "vite": "^6.2.0",
     "wagmi": "^3.5.0",
     "zustand": "^5.0.12"
   },

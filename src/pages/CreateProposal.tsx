@@ -15,23 +15,38 @@ import {
   Copy,
   AlertCircle,
   Loader2,
+  ExternalLink,
+  Link2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Badge, AppLayout, PageWrapper, Button } from '../components/UI';
 import { useCreateProposal } from '../hooks/useCreateProposal';
 import { cn } from '../utils';
 import { QRCodeSVG } from 'qrcode.react';
+import { etherscanTx } from '../config/contract';
 
 export const CreateProposal = () => {
   const navigate = useNavigate();
-  const { createProposal, deployState, txHash, error, reset } = useCreateProposal();
+  const { createProposal, deployState, txHash, proposalId, error, reset } = useCreateProposal();
   const [step, setStep] = useState(1);
+
+  const DURATION_OPTIONS = [
+    { label: '10 min', minutes: 10 },
+    { label: '1 hour', minutes: 60 },
+    { label: '12 hours', minutes: 720 },
+    { label: '1 day', minutes: 1440 },
+    { label: '3 days', minutes: 4320 },
+    { label: '7 days', minutes: 10080 },
+    { label: '14 days', minutes: 20160 },
+    { label: '30 days', minutes: 43200 },
+  ];
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     options: ['', ''],
-    durationDays: 3,
+    durationMinutes: 4320,
+    customDate: '',
     quorum: 10,
   });
 
@@ -54,16 +69,62 @@ export const CreateProposal = () => {
     setFormData({ ...formData, options: newOptions });
   };
 
-  const sanitize = (s: string) => s.trim().replace(/[<>]/g, '');
+  const sanitize = (s: string) => s.trim().replace(/[<>&"'/]/g, '');
+
+  const [deployError, setDeployError] = useState<string | null>(null);
 
   const handleDeploy = async () => {
-    const title = sanitize(formData.title);
-    if (!title || title.length < 3 || title.length > 200) return;
-    const validOptions = formData.options.filter((o) => sanitize(o).length > 0);
-    if (validOptions.length < 2 || validOptions.length > 10) return;
+    setDeployError(null);
 
-    const deadlineTimestamp = Math.floor(Date.now() / 1000) + formData.durationDays * 24 * 60 * 60;
-    if (formData.quorum < 1) return;
+    const title = sanitize(formData.title);
+    if (!title || title.length < 3) {
+      setDeployError('Title must be at least 3 characters');
+      return;
+    }
+    if (title.length > 200) {
+      setDeployError('Title must be under 200 characters');
+      return;
+    }
+
+    const validOptions = formData.options.map((o) => sanitize(o)).filter((o) => o.length > 0);
+    if (validOptions.length < 2) {
+      setDeployError('At least 2 non-empty options required');
+      return;
+    }
+    if (validOptions.length > 10) {
+      setDeployError('Maximum 10 options allowed');
+      return;
+    }
+
+    // Check for duplicate options
+    const uniqueOptions = new Set(validOptions.map((o) => o.toLowerCase()));
+    if (uniqueOptions.size !== validOptions.length) {
+      setDeployError('Duplicate options are not allowed');
+      return;
+    }
+
+    // Check individual option length
+    if (validOptions.some((o) => o.length > 100)) {
+      setDeployError('Each option must be under 100 characters');
+      return;
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    let deadlineTimestamp: number;
+    if (formData.customDate) {
+      deadlineTimestamp = Math.floor(new Date(formData.customDate).getTime() / 1000);
+    } else {
+      deadlineTimestamp = nowSec + formData.durationMinutes * 60;
+    }
+    if (deadlineTimestamp <= nowSec) {
+      setDeployError('Deadline must be in the future');
+      return;
+    }
+
+    if (formData.quorum < 1) {
+      setDeployError('Quorum must be at least 1');
+      return;
+    }
 
     await createProposal(title, validOptions.length, deadlineTimestamp, formData.quorum);
   };
@@ -157,6 +218,27 @@ export const CreateProposal = () => {
                 {step === 2 && (
                   <Card hover={false} className="space-y-6">
                     <div className="space-y-4">
+                      <div className="space-y-3">
+                        <div className="text-xs text-text-muted uppercase font-bold tracking-widest">Quick Templates</div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { name: 'Yes / No', options: ['Yes', 'No'] },
+                            { name: 'Approve / Reject / Abstain', options: ['Approve', 'Reject', 'Abstain'] },
+                            { name: 'Multiple Choice (A-D)', options: ['Option A', 'Option B', 'Option C', 'Option D'] },
+                            { name: 'Priority (High-Low)', options: ['High Priority', 'Medium Priority', 'Low Priority'] },
+                          ].map((t) => (
+                            <button
+                              key={t.name}
+                              onClick={() => setFormData((prev) => ({ ...prev, options: [...t.options] }))}
+                              className="p-3 rounded-xl border border-default bg-white hover:border-primary-accent/30 hover:bg-surface-highlight transition-all text-left space-y-1"
+                            >
+                              <div className="text-sm font-bold">{t.name}</div>
+                              <div className="text-[10px] text-text-muted">{t.options.join(' · ')}</div>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-xs text-text-muted uppercase font-bold tracking-widest pt-4">Or Custom Options</div>
+                      </div>
                       <label className="text-sm font-bold text-text-secondary">Voting Options</label>
                       {formData.options.map((opt, i) => (
                         <div key={i} className="flex gap-2">
@@ -203,20 +285,112 @@ export const CreateProposal = () => {
                   <Card hover={false} className="space-y-6">
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-sm font-bold text-text-secondary">Voting Duration (days)</label>
-                        <div className="flex items-center gap-4">
-                          <input
-                            type="range"
-                            min="1"
-                            max="30"
-                            step="1"
-                            value={formData.durationDays}
-                            onChange={(e) => setFormData({ ...formData, durationDays: parseInt(e.target.value) })}
-                            className="flex-1 h-2 bg-bg-base rounded-full appearance-none cursor-pointer accent-primary-accent"
-                          />
-                          <div className="w-20 text-center font-bold text-secondary-accent">
-                            {formData.durationDays}d
-                          </div>
+                        <label className="text-sm font-bold text-text-secondary">Voting Duration</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {DURATION_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.minutes}
+                              onClick={() => {
+                                const endDate = new Date(Date.now() + opt.minutes * 60000);
+                                const p = (n: number) => String(n).padStart(2, '0');
+                                const dateStr = `${endDate.getFullYear()}-${p(endDate.getMonth() + 1)}-${p(endDate.getDate())}T${p(endDate.getHours())}:${p(endDate.getMinutes())}`;
+                                setDeployError(null);
+                                setFormData((prev) => ({ ...prev, durationMinutes: opt.minutes, customDate: dateStr }));
+                              }}
+                              className={cn(
+                                'py-3 px-4 rounded-input border-2 font-semibold text-sm transition-all',
+                                formData.durationMinutes === opt.minutes
+                                  ? 'border-primary-accent bg-surface-highlight text-primary-accent'
+                                  : 'border-default bg-white hover:border-primary-accent/30 text-text-secondary'
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pt-3 space-y-2">
+                          <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Or pick a custom end date</label>
+                          {(() => {
+                            const now = new Date();
+                            // Default: tomorrow at 12:00
+                            const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12, 0);
+                            const current = formData.customDate ? new Date(formData.customDate) : tomorrow;
+                            const selDay = current.getDate();
+                            const selMonth = current.getMonth();
+                            const selYear = current.getFullYear();
+                            const selHour = current.getHours();
+                            const selMinute = current.getMinutes();
+                            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            const daysInMonth = new Date(selYear, selMonth + 1, 0).getDate();
+
+                            const pad = (n: number) => String(n).padStart(2, '0');
+                            const buildLocal = (d: number, mo: number, y: number, h: number, m: number) =>
+                              `${y}-${pad(mo + 1)}-${pad(d)}T${pad(h)}:${pad(m)}`;
+
+                            const update = (d: number, mo: number, y: number, h: number, m: number) => {
+                              const dt = new Date(y, mo, d, h, m);
+                              if (dt.getTime() <= Date.now()) {
+                                setDeployError('Selected date is in the past');
+                              } else {
+                                setDeployError(null);
+                              }
+                              setFormData((prev) => ({ ...prev, customDate: buildLocal(d, mo, y, h, m), durationMinutes: -1 }));
+                            };
+
+                            // Round to nearest 30 min for select value
+                            const roundedMin = selMinute < 15 ? 0 : selMinute < 45 ? 30 : 0;
+                            const roundedHour = selMinute >= 45 ? (selHour + 1) % 24 : selHour;
+                            const currentTimeVal = roundedHour * 60 + roundedMin;
+
+                            const selectClass = 'px-3 py-2.5 rounded-input border border-default bg-white text-sm font-medium focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent outline-none appearance-none cursor-pointer';
+                            const isPast = current.getTime() <= Date.now();
+
+                            return (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-3 gap-2">
+                                  <select value={selDay} onChange={(e) => update(Number(e.target.value), selMonth, selYear, selHour, selMinute)} className={selectClass}>
+                                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
+                                      <option key={d} value={d}>{d}</option>
+                                    ))}
+                                  </select>
+                                  <select value={selMonth} onChange={(e) => update(selDay, Number(e.target.value), selYear, selHour, selMinute)} className={selectClass}>
+                                    {months.map((m, i) => (<option key={i} value={i}>{m}</option>))}
+                                  </select>
+                                  <select value={selYear} onChange={(e) => update(selDay, selMonth, Number(e.target.value), selHour, selMinute)} className={selectClass}>
+                                    {[now.getFullYear(), now.getFullYear() + 1].map((y) => (<option key={y} value={y}>{y}</option>))}
+                                  </select>
+                                </div>
+                                <select
+                                  value={currentTimeVal}
+                                  onChange={(e) => { const v = Number(e.target.value); update(selDay, selMonth, selYear, Math.floor(v / 60), v % 60); }}
+                                  className={selectClass + ' w-full'}
+                                >
+                                  {Array.from({ length: 48 }, (_, i) => {
+                                    const h = Math.floor(i / 2);
+                                    const m = (i % 2) * 30;
+                                    const val = h * 60 + m;
+                                    return <option key={val} value={val}>{pad(h)}:{pad(m)}</option>;
+                                  })}
+                                </select>
+                                <div className="flex items-center justify-between">
+                                  <span className={cn('text-xs', isPast ? 'text-danger font-bold' : 'text-text-secondary')}>
+                                    {isPast
+                                      ? 'This date is in the past!'
+                                      : <>Ends: <span className="font-bold text-text-primary">{current.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></>
+                                    }
+                                  </span>
+                                  {formData.customDate && (
+                                    <button
+                                      onClick={() => { setDeployError(null); setFormData((prev) => ({ ...prev, customDate: '', durationMinutes: 4320 })); }}
+                                      className="text-xs text-danger hover:underline"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -270,7 +444,11 @@ export const CreateProposal = () => {
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <div className="text-xs text-text-muted uppercase font-bold mb-1">Duration</div>
-                            <div className="font-bold">{formData.durationDays} Days</div>
+                            <div className="font-bold">
+                              {formData.customDate
+                                ? new Date(formData.customDate).toLocaleString()
+                                : DURATION_OPTIONS.find((o) => o.minutes === formData.durationMinutes)?.label || `${formData.durationMinutes} min`}
+                            </div>
                           </div>
                           <div>
                             <div className="text-xs text-text-muted uppercase font-bold mb-1">Quorum</div>
@@ -287,12 +465,12 @@ export const CreateProposal = () => {
                         </p>
                       </div>
 
-                      {error && (
+                      {(error || deployError) && (
                         <div className="p-4 bg-danger/5 border border-danger/20 rounded-xl flex items-start gap-3">
                           <AlertCircle className="w-5 h-5 text-danger shrink-0" />
                           <div>
-                            <p className="text-sm font-bold text-danger">Transaction Failed</p>
-                            <p className="text-xs text-text-secondary mt-1">{error}</p>
+                            <p className="text-sm font-bold text-danger">{deployError ? 'Validation Error' : 'Transaction Failed'}</p>
+                            <p className="text-xs text-text-secondary mt-1">{deployError || error}</p>
                           </div>
                         </div>
                       )}
@@ -350,21 +528,52 @@ export const CreateProposal = () => {
                       <div className="bg-bg-base p-4 rounded-xl space-y-2">
                         <div className="text-[10px] text-text-muted uppercase font-bold">Transaction Hash</div>
                         <div className="font-mono text-xs break-all text-text-primary">{txHash}</div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 gap-2"
+                            onClick={() => navigator.clipboard.writeText(txHash)}
+                          >
+                            <Copy className="w-3 h-3" /> Copy
+                          </Button>
+                          <a
+                            href={etherscanTx(txHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1"
+                          >
+                            <Button variant="ghost" size="sm" className="w-full gap-2">
+                              <ExternalLink className="w-3 h-3" /> Etherscan
+                            </Button>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {proposalId !== null && (
+                    <div className="max-w-xs mx-auto space-y-4">
+                      <div className="bg-surface-highlight p-4 rounded-xl space-y-2">
+                        <div className="text-[10px] text-text-muted uppercase font-bold">Voting Link</div>
+                        <div className="font-mono text-xs break-all text-primary-accent">
+                          {window.location.origin}/app/proposal/{proposalId.toString()}
+                        </div>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="w-full gap-2"
-                          onClick={() => navigator.clipboard.writeText(txHash)}
+                          onClick={() => navigator.clipboard.writeText(`${window.location.origin}/app/proposal/${proposalId.toString()}`)}
                         >
-                          <Copy className="w-3 h-3" /> Copy Hash
+                          <Link2 className="w-3 h-3" /> Copy Voting Link
                         </Button>
                       </div>
                     </div>
                   )}
 
                   <div className="flex flex-col gap-3">
-                    <Button onClick={() => navigate('/app/proposals')} className="w-full">
-                      View Proposals
+                    <Button onClick={() => navigate(proposalId !== null ? `/app/proposal/${proposalId.toString()}` : '/app/proposals')} className="w-full">
+                      {proposalId !== null ? 'Go to Proposal' : 'View Proposals'}
                     </Button>
                     <Button
                       variant="outline"
@@ -375,7 +584,8 @@ export const CreateProposal = () => {
                           title: '',
                           description: '',
                           options: ['', ''],
-                          durationDays: 3,
+                          durationMinutes: 4320,
+                          customDate: '',
                           quorum: 10,
                         });
                       }}

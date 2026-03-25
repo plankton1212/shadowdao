@@ -25,13 +25,19 @@ import {
   Vote as VoteIcon,
   Database,
   ChevronDown,
+  BarChart3,
+  UserCheck,
+  Bell,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, formatAddress, formatNumber } from '../utils';
+import { useNotifications } from '../hooks/useNotifications';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 
-export type ProposalStatus = 'VOTING' | 'ENDED' | 'REVEALED';
+export type ProposalStatus = 'VOTING' | 'ENDED' | 'REVEALED' | 'CANCELLED';
 
 export const Logo = ({ className = 'w-8 h-8' }: { className?: string }) => (
   <img src="/logo.svg" alt="ShadowDAO" className={className} />
@@ -138,6 +144,7 @@ export const StatusBadge = ({ status }: { status: ProposalStatus }) => {
       </div>
     );
   if (status === 'ENDED') return <Badge variant="warning">ENDED</Badge>;
+  if (status === 'CANCELLED') return <Badge variant="default">CANCELLED</Badge>;
   return <Badge variant="info">REVEALED</Badge>;
 };
 
@@ -165,8 +172,135 @@ export const QuorumBar = ({ current, target }: { current: number; target: number
 
 // --- App Shell Components ---
 
+export const Skeleton = ({ className, count = 1, ...props }: { className?: string; count?: number; [key: string]: any }) => (
+  <div className="space-y-3">
+    {Array.from({ length: count }).map((_, i) => (
+      <div key={i} className={cn('animate-pulse bg-bg-base rounded-xl', className)} />
+    ))}
+  </div>
+);
+
+export const ProposalSkeleton = () => (
+  <div className="bg-surface-white rounded-card p-6 shadow-card border border-cards space-y-4">
+    <div className="flex items-center gap-3">
+      <div className="animate-pulse bg-bg-base rounded-badge w-20 h-6" />
+      <div className="animate-pulse bg-bg-base rounded-badge w-12 h-5" />
+    </div>
+    <div className="animate-pulse bg-bg-base rounded-xl h-7 w-3/4" />
+    <div className="flex gap-4">
+      <div className="animate-pulse bg-bg-base rounded-xl h-4 w-24" />
+      <div className="animate-pulse bg-bg-base rounded-xl h-4 w-20" />
+      <div className="animate-pulse bg-bg-base rounded-xl h-4 w-32" />
+    </div>
+    <div className="animate-pulse bg-bg-base rounded-full h-1.5 w-full" />
+  </div>
+);
+
+export const StatSkeleton = () => (
+  <div className="bg-surface-white rounded-card p-6 shadow-card border border-cards space-y-2">
+    <div className="animate-pulse bg-bg-base rounded-xl h-4 w-24" />
+    <div className="animate-pulse bg-bg-base rounded-xl h-8 w-16" />
+    <div className="animate-pulse bg-bg-base rounded-xl h-3 w-20" />
+  </div>
+);
+
+export const CountUp = ({ end, duration = 1.5, suffix = '' }: { end: number; duration?: number; suffix?: string }) => {
+  const [count, setCount] = useState(0);
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const [hasAnimated, setHasAnimated] = useState(false);
+
+  useEffect(() => {
+    if (hasAnimated || !ref.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasAnimated(true);
+          const start = Date.now();
+          const step = () => {
+            const elapsed = Date.now() - start;
+            const progress = Math.min(elapsed / (duration * 1000), 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setCount(Math.round(eased * end));
+            if (progress < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [end, duration, hasAnimated]);
+
+  return <span ref={ref}>{count}{suffix}</span>;
+};
+
 // Module-level flag — resets on full page reload, persists across navigations
 let hasPreloaded = false;
+
+// SVG paths from logo, split into groups for staggered assembly
+const LOGO_PATHS = [
+  { d: 'm27.61 58.81 100.7-47.81 100.6 47.12-28.52 128.9-72.16 56.73-72.64-56.29-28-128.6z', fill: '#34CC99' },
+  { d: 'm129.5 14.15 42.44 65.26 54.87-18.46-26.74 121.1-70.46 58.99 63.68-71.07-14.46-25.24 11.19 8.46 9.06 16.62 10.66-113.9-55.99-29.03-24.25-12.76z', fill: '#268E6A' },
+  { d: 'm128.3 6.36 105 50.38-29.58 132.2-75.57 61.02-75.79-60.73-29.64-132.7 105.5-50.25zm0.1 8.26-95.06 46.24 23.73 109.2 6.79-17.08 12.49-9.2-19.35 41.4 67.54 52.57 74.36-52.57-18.09-40.8 13.57 9.7 5.16 15.17 23.01-106.7-46.15 4.61-23.16-31.27-24.84-21.34z', fill: '#000' },
+  { d: 'm124.1 13.71h7.71v66.21h-7.79l0.08-66.21z', fill: '#000' },
+  { d: 'm132.1 14.29 28.91 14.1 20.4 29.67 31.8-2.76 9.81 1.99-47.23 7.33-43.69-50.33z', fill: '#34CC99', stroke: '#000', strokeWidth: 8.077 },
+  { d: 'm124.3 170.6h7.71v69.65h-7.79l0.08-69.65z', fill: '#000' },
+  { d: 'm178.5 170.2-6.33-48.4 17.6 40.31 7.05 24.16-65.55 52.72 50.36-68.95-3.13 0.16z', fill: '#268E6A' },
+  { d: 'm84.47 121.7-13.57 70.07-13.82-7.5 18.45-40.48 0.68 0.64 8.26-22.73z', fill: '#268E6A' },
+  { d: 'm94.98 92.02h66.04v66.4h-66.04v-66.4z', fill: '#fff', stroke: '#000', strokeWidth: 7.881 },
+  { d: 'm102.2 124.2 8.99-13.49 13.84 14.33 38.72-41.95 13.19 13.19-51.67 55.81-23.07-27.89z', fill: '#34CC99', stroke: '#000', strokeWidth: 7.881 },
+];
+
+// Random offsets for each path fragment
+const FRAGMENT_OFFSETS = [
+  { x: -120, y: -80, r: -25 },
+  { x: 100, y: -60, r: 30 },
+  { x: 0, y: -100, r: -15 },
+  { x: -80, y: 90, r: 20 },
+  { x: 130, y: 40, r: -35 },
+  { x: -60, y: 120, r: 25 },
+  { x: 90, y: -90, r: -20 },
+  { x: -140, y: 30, r: 15 },
+  { x: 50, y: 110, r: -30 },
+  { x: -30, y: -130, r: 35 },
+];
+
+export const HashScramble = ({ text, className }: { text: string; className?: string }) => {
+  const [display, setDisplay] = useState(text);
+  const [isHovering, setIsHovering] = useState(false);
+  const chars = '0123456789abcdef';
+
+  useEffect(() => {
+    if (!isHovering) {
+      setDisplay(text);
+      return;
+    }
+    let iteration = 0;
+    const interval = setInterval(() => {
+      setDisplay(prev =>
+        text.split('').map((char, i) => {
+          if (i < iteration || char === '.' || char === '0' && i < 2) return char;
+          return chars[Math.floor(Math.random() * chars.length)];
+        }).join('')
+      );
+      iteration += 1;
+      if (iteration >= text.length) clearInterval(interval);
+    }, 30);
+    return () => clearInterval(interval);
+  }, [isHovering, text]);
+
+  return (
+    <span
+      className={cn('font-mono cursor-default', className)}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => { setIsHovering(false); setDisplay(text); }}
+    >
+      {display}
+    </span>
+  );
+};
 
 export const Preloader = () => {
   const [show, setShow] = useState(() => {
@@ -174,12 +308,15 @@ export const Preloader = () => {
     hasPreloaded = true;
     return true;
   });
+  const [phase, setPhase] = useState(0);
 
   useEffect(() => {
-    if (show) {
-      const timer = setTimeout(() => setShow(false), 2000);
-      return () => clearTimeout(timer);
-    }
+    if (!show) return;
+    const t1 = setTimeout(() => setPhase(1), 200);
+    const t2 = setTimeout(() => setPhase(2), 1400);
+    const t3 = setTimeout(() => setPhase(3), 2200);
+    const t4 = setTimeout(() => setShow(false), 4000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [show]);
 
   return (
@@ -187,31 +324,142 @@ export const Preloader = () => {
       {show && (
         <motion.div
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, y: -30 }}
-          transition={{ duration: 0.6, ease: 'easeInOut' }}
-          className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden"
+          style={{ background: 'radial-gradient(ellipse at 50% 40%, #0f1f15 0%, #070b09 50%, #000000 100%)' }}
         >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            className="flex items-center gap-2 mb-8"
-          >
-            <Logo className="w-10 h-10" />
-            <span className="text-3xl font-extrabold text-secondary-accent tracking-tight">ShadowDAO</span>
-          </motion.div>
-          <div className="w-48 h-1 bg-bg-base rounded-full overflow-hidden">
+          {/* Grid overlay */}
+          <div className="absolute inset-0 opacity-[0.04]"
+            style={{ backgroundImage: 'linear-gradient(rgba(52,204,153,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(52,204,153,0.5) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+
+          {/* Hexagonal rings */}
+          <div className="relative w-[280px] h-[280px] flex items-center justify-center">
+            {/* Outer hex ring */}
             <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: '100%' }}
-              transition={{ duration: 1.2, ease: 'easeInOut' }}
-              className="h-full bg-primary-accent"
+              initial={{ opacity: 0, scale: 1.5, rotate: 30 }}
+              animate={phase >= 1 ? { opacity: 0.15, scale: 1, rotate: 0 } : {}}
+              transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+            >
+              <svg viewBox="0 0 280 280" className="w-full h-full">
+                <polygon points="140,10 250,75 250,205 140,270 30,205 30,75" fill="none" stroke="#34CC99" strokeWidth="1" strokeDasharray="4 8" />
+              </svg>
+            </motion.div>
+
+            {/* Inner hex ring */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.3, rotate: -30 }}
+              animate={phase >= 1 ? { opacity: 0.25, scale: 1, rotate: 0 } : {}}
+              transition={{ duration: 1, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute"
+              style={{ width: 200, height: 200 }}
+            >
+              <svg viewBox="0 0 200 200" className="w-full h-full">
+                <polygon points="100,8 180,54 180,146 100,192 20,146 20,54" fill="none" stroke="#34CC99" strokeWidth="0.8" opacity="0.5" />
+              </svg>
+            </motion.div>
+
+            {/* Corner nodes */}
+            {[0, 60, 120, 180, 240, 300].map((angle, i) => {
+              const r = 120;
+              const x = 140 + r * Math.cos((angle - 90) * Math.PI / 180);
+              const y = 140 + r * Math.sin((angle - 90) * Math.PI / 180);
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={phase >= 1 ? { opacity: 1, scale: 1 } : {}}
+                  transition={{ delay: 0.3 + i * 0.08, duration: 0.4 }}
+                  className="absolute w-2 h-2 bg-[#34CC99] rounded-full"
+                  style={{ left: x * (280 / 280) - 4, top: y * (280 / 280) - 4, boxShadow: '0 0 12px rgba(52,204,153,0.6)' }}
+                />
+              );
+            })}
+
+            {/* Connection lines animating in */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 280 280">
+              {[
+                { x1: 140, y1: 20, x2: 140, y2: 100 },
+                { x1: 245, y1: 80, x2: 180, y2: 110 },
+                { x1: 245, y1: 200, x2: 180, y2: 170 },
+                { x1: 35, y1: 80, x2: 100, y2: 110 },
+                { x1: 35, y1: 200, x2: 100, y2: 170 },
+                { x1: 140, y1: 260, x2: 140, y2: 180 },
+              ].map((line, i) => (
+                <motion.line
+                  key={i}
+                  x1={line.x1} y1={line.y1} x2={line.x1} y2={line.y1}
+                  animate={phase >= 1 ? { x2: line.x2, y2: line.y2 } : {}}
+                  transition={{ delay: 0.5 + i * 0.06, duration: 0.5, ease: 'easeOut' }}
+                  stroke="#34CC99" strokeWidth="0.5" opacity="0.3"
+                />
+              ))}
+            </svg>
+
+            {/* Logo — scales up from center */}
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={phase >= 1 ? { scale: 1, opacity: 1 } : {}}
+              transition={{ delay: 0.2, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <motion.div
+                animate={phase >= 2 ? { filter: ['brightness(1)', 'brightness(1.8)', 'brightness(1)'] } : {}}
+                transition={{ duration: 0.6 }}
+              >
+                <svg width="90" height="90" viewBox="0 0 256 256">
+                  {LOGO_PATHS.map((path, i) => (
+                    <motion.path
+                      key={i}
+                      d={path.d}
+                      fill={path.fill}
+                      stroke={path.stroke}
+                      strokeWidth={path.strokeWidth}
+                      initial={{ opacity: 0 }}
+                      animate={phase >= 1 ? { opacity: 1 } : {}}
+                      transition={{ delay: 0.4 + i * 0.05, duration: 0.4 }}
+                    />
+                  ))}
+                </svg>
+              </motion.div>
+            </motion.div>
+
+            {/* Pulse ring on phase 2 */}
+            <motion.div
+              initial={{ scale: 0.3, opacity: 0 }}
+              animate={phase >= 2 ? { scale: [0.5, 2.5], opacity: [0.5, 0] } : {}}
+              transition={{ duration: 1, ease: 'easeOut' }}
+              className="absolute w-[120px] h-[120px] border border-[#34CC99] rounded-full pointer-events-none"
             />
           </div>
+
+          {/* Text + tagline */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={phase >= 3 ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.5 }}
+            className="mt-6 text-center space-y-3"
+          >
+            <div className="text-2xl font-extrabold tracking-tight">
+              <span className="text-white">Shadow</span><span className="text-[#34CC99]">DAO</span>
+            </div>
+            <div className="text-[11px] uppercase tracking-[0.3em] text-[#34CC99]/40 font-medium">
+              Private Governance Protocol
+            </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
   );
+};
+
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+const toastConfig: Record<ToastType, { icon: React.ElementType; border: string; iconColor: string; duration: number }> = {
+  success: { icon: CheckCircle2, border: 'border-primary-accent', iconColor: 'text-primary-accent', duration: 3000 },
+  error:   { icon: AlertCircle,  border: 'border-danger',        iconColor: 'text-danger',        duration: 5000 },
+  warning: { icon: AlertTriangle, border: 'border-warning',      iconColor: 'text-warning',       duration: 4000 },
+  info:    { icon: Info,          border: 'border-tertiary-accent', iconColor: 'text-tertiary-accent', duration: 3000 },
 };
 
 export const Toast = ({
@@ -220,30 +468,62 @@ export const Toast = ({
   onClose,
 }: {
   message: string;
-  type?: 'success' | 'error';
+  type?: ToastType;
   onClose: () => void;
 }) => {
+  const config = toastConfig[type];
+  const Icon = config.icon;
+
   useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
+    const timer = setTimeout(onClose, config.duration);
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, [onClose, config.duration]);
 
   return (
     <motion.div
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: -20, opacity: 0 }}
+      initial={{ x: 80, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 80, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       className={cn(
-        'fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white rounded-xl shadow-elevated px-6 py-4 flex items-center gap-3 min-w-[300px]',
-        type === 'error' ? 'border-l-4 border-danger' : 'border-l-4 border-primary-accent'
+        'fixed top-6 right-6 z-[100] bg-white rounded-xl shadow-elevated px-6 py-4 flex items-center gap-3 min-w-[300px] border-l-4',
+        config.border
       )}
     >
-      <CheckCircle2 className={cn('w-5 h-5', type === 'error' ? 'text-danger' : 'text-primary-accent')} />
+      <Icon className={cn('w-5 h-5 flex-shrink-0', config.iconColor)} />
       <span className="text-sm font-bold text-secondary-accent">{message}</span>
       <button onClick={onClose} className="ml-auto text-text-muted hover:text-text-primary">
         <X className="w-4 h-4" />
       </button>
     </motion.div>
+  );
+};
+
+export const CopyButton = ({ text, label, className }: { text: string; label?: string; className?: string }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className={cn('inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors', className)}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <>
+          <CheckCircle2 className="w-3.5 h-3.5 text-primary-accent" />
+          {label ? <span className="text-primary-accent">Copied!</span> : null}
+        </>
+      ) : (
+        <>
+          <Copy className="w-3.5 h-3.5" />
+          {label ? <span>{label}</span> : null}
+        </>
+      )}
+    </button>
   );
 };
 
@@ -326,7 +606,7 @@ export const Navbar = () => {
         <Link to="/features" className="text-text-secondary hover:text-text-primary font-medium transition-colors">
           Features
         </Link>
-        <a href="#" className="text-text-secondary hover:text-text-primary font-medium transition-colors">
+        <a href="https://github.com/plankton1212/shadowdao#readme" target="_blank" rel="noopener noreferrer" className="text-text-secondary hover:text-text-primary font-medium transition-colors">
           Docs
         </a>
       </div>
@@ -350,6 +630,102 @@ export const Navbar = () => {
   );
 };
 
+const NotificationBell = () => {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => {
+          setOpen(!open);
+          if (!open && unreadCount > 0) {
+            // Will mark read on close
+          }
+        }}
+        className="relative p-2 text-text-muted hover:text-text-primary transition-colors"
+      >
+        <Bell className="w-5 h-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-danger text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); markAllRead(); }} />
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="absolute right-0 top-12 w-80 bg-white rounded-card shadow-elevated border border-black/5 z-50 overflow-hidden"
+            >
+              <div className="px-4 py-3 border-b border-default flex justify-between items-center">
+                <span className="font-bold text-sm">Notifications</span>
+                {unreadCount > 0 && (
+                  <button onClick={markAllRead} className="text-[10px] text-primary-accent font-bold hover:underline">
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-72 overflow-y-auto">
+                {notifications.length > 0 ? (
+                  notifications.map((n: any) => (
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        markRead(n.id);
+                        if (n.proposalId !== undefined) {
+                          navigate(`/app/proposal/${n.proposalId.toString()}`);
+                          setOpen(false);
+                        }
+                      }}
+                      className={cn(
+                        'px-4 py-3 border-b border-default last:border-0 hover:bg-surface-tinted transition-colors cursor-pointer',
+                        !n.read && 'bg-surface-highlight/50'
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={cn(
+                          'w-2 h-2 rounded-full mt-1.5 shrink-0',
+                          !n.read ? (n.type === 'proposal' ? 'bg-primary-accent' : n.type === 'vote' ? 'bg-tertiary-accent' : 'bg-warning') : 'bg-transparent'
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{n.text}</p>
+                          <p className="text-[10px] text-text-muted mt-0.5">{n.time}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-8 text-center text-text-muted text-sm">
+                    No activity yet
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 py-2.5 border-t border-default">
+                <button
+                  onClick={() => { setOpen(false); navigate('/app/settings'); }}
+                  className="text-xs text-primary-accent font-medium hover:underline w-full text-center"
+                >
+                  Notification Settings
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export const AppTopBar = () => {
   const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
@@ -363,14 +739,17 @@ export const AppTopBar = () => {
     { name: 'Dashboard', path: '/app/dashboard', icon: LayoutGrid },
     { name: 'Proposals', path: '/app/proposals', icon: List },
     { name: 'Create', path: '/app/create', icon: PlusCircle, highlight: true },
+    { name: 'Spaces', path: '', icon: Users, disabled: true },
     { name: 'Treasury', path: '/app/treasury', icon: Database },
+    { name: 'Delegation', path: '/app/delegation', icon: UserCheck },
+    { name: 'Analytics', path: '/app/analytics', icon: BarChart3 },
     { name: 'Settings', path: '/app/settings', icon: SettingsIcon },
   ];
 
   return (
     <header className="sticky top-0 z-40 w-full bg-white border-b border-black/5 shadow-sm">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/app/dashboard" className="flex items-center gap-2">
+      <div className="max-w-[1440px] mx-auto px-4 h-16 flex items-center justify-between">
+        <Link to="/app/dashboard" className="flex items-center gap-2 shrink-0">
           <Logo className="w-7 h-7" />
           <span className="text-lg font-bold text-secondary-accent hidden sm:inline">ShadowDAO</span>
         </Link>
@@ -379,6 +758,18 @@ export const AppTopBar = () => {
           {tabs.map((tab) => {
             const isActive = location.pathname === tab.path;
             const Icon = tab.icon;
+            if ((tab as any).disabled) {
+              return (
+                <span
+                  key={tab.name}
+                  className="flex items-center gap-2 px-4 py-2 rounded-pill text-sm font-medium text-text-muted/40 cursor-not-allowed select-none"
+                  title="Coming soon"
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.name}
+                </span>
+              );
+            }
             return (
               <Link
                 key={tab.path}
@@ -399,7 +790,7 @@ export const AppTopBar = () => {
           })}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {wrongNetwork && (
             <button
               onClick={() => switchChain({ chainId: sepolia.id })}
@@ -408,6 +799,10 @@ export const AppTopBar = () => {
               Wrong Network
             </button>
           )}
+
+          {/* Notifications Bell */}
+          <NotificationBell />
+
           <div className="bg-secondary-accent text-white px-4 py-2 rounded-pill flex items-center gap-2 text-sm font-mono cursor-pointer hover:opacity-90 transition-opacity">
             <div className="w-2 h-2 bg-primary-accent rounded-full" />
             {formatAddress(address ?? null)}
@@ -433,7 +828,6 @@ export const MobileTabBar = () => {
     { path: '/app/dashboard', icon: LayoutGrid },
     { path: '/app/proposals', icon: List },
     { path: '/app/create', icon: PlusCircle },
-    { path: '/app/treasury', icon: Database },
     { path: '/app/settings', icon: SettingsIcon },
   ];
 

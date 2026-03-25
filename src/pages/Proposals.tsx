@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, ProposalSkeleton } from '../components/UI';
 import { useProposals, ProposalStatus } from '../hooks/useProposals';
 import { cn, formatAddress } from '../utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -36,18 +37,24 @@ export const Proposals = () => {
                 />
               </div>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                {(['ALL', 'VOTING', 'ENDED', 'REVEALED'] as const).map((f) => (
+                {([
+                  { key: 'ALL', label: 'Any', color: '' },
+                  { key: 'VOTING', label: 'Active', color: 'bg-primary-accent' },
+                  { key: 'ENDED', label: 'Pending Reveal', color: 'bg-warning' },
+                  { key: 'REVEALED', label: 'Closed', color: 'bg-text-muted' },
+                ] as const).map((f) => (
                   <button
-                    key={f}
-                    onClick={() => setFilter(f)}
+                    key={f.key}
+                    onClick={() => setFilter(f.key as any)}
                     className={cn(
-                      'px-4 py-2 rounded-pill text-sm font-medium whitespace-nowrap transition-all',
-                      filter === f
+                      'px-4 py-2 rounded-pill text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
+                      filter === f.key
                         ? 'bg-secondary-accent text-white shadow-sm'
                         : 'bg-white text-text-secondary border border-default hover:bg-surface-tinted'
                     )}
                   >
-                    {f.charAt(0) + f.slice(1).toLowerCase()}
+                    {f.color && <span className={cn('w-2 h-2 rounded-full', f.color)} />}
+                    {f.label}
                   </button>
                 ))}
               </div>
@@ -55,8 +62,8 @@ export const Proposals = () => {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 gap-3 text-text-muted">
-              <Loader2 className="w-5 h-5 animate-spin" /> Loading proposals from chain...
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => <ProposalSkeleton key={i} />)}
             </div>
           ) : error ? (
             <div className="text-center py-20 bg-white/50 rounded-card border border-dashed border-danger/30 space-y-4">
@@ -69,9 +76,14 @@ export const Proposals = () => {
           ) : (
             <div className="space-y-4">
               {filteredProposals.length > 0 ? (
-                filteredProposals.map((proposal) => (
-                  <Card
+                filteredProposals.map((proposal, i) => (
+                  <motion.div
                     key={proposal.id.toString()}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05, duration: 0.3 }}
+                  >
+                  <Card
                     className="p-0 overflow-hidden hover:border-primary-accent/20 cursor-pointer"
                     onClick={() => navigate(`/app/proposal/${proposal.id.toString()}`)}
                   >
@@ -104,6 +116,7 @@ export const Proposals = () => {
                       </div>
                     </div>
                   </Card>
+                  </motion.div>
                 ))
               ) : (
                 <div className="text-center py-20 bg-white/50 rounded-card border border-dashed border-default space-y-4">

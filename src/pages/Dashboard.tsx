@@ -16,9 +16,10 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, Skeleton, ProposalSkeleton, StatSkeleton, CountUp } from '../components/UI';
 import { useAccount } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { formatAddress, formatNumber } from '../utils';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -26,6 +27,7 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const { address } = useAccount();
   const { proposals, loading, error, refetch } = useProposals();
+  useKeyboardShortcuts();
   const [showBalance, setShowBalance] = useState(false);
 
   const activeProposals = proposals.filter((p) => p.status === 'VOTING');
@@ -57,7 +59,7 @@ export const Dashboard = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="space-y-2">
               <div className="text-text-muted text-sm font-medium uppercase tracking-wider">Total Proposals</div>
-              <div className="text-3xl font-bold">{loading ? '...' : proposals.length}</div>
+              <div className="text-3xl font-bold"><CountUp end={proposals.length} /></div>
               <div className="flex items-center gap-1 text-xs text-primary-accent">
                 <Database className="w-3 h-3" /> On-chain
               </div>
@@ -66,7 +68,7 @@ export const Dashboard = () => {
             <Card accent className="space-y-2 relative overflow-hidden">
               <div className="text-[#1A3A20]/70 text-sm font-medium uppercase tracking-wider">Active Now</div>
               <div className="text-3xl font-bold text-[#1A3A20] flex items-center gap-2">
-                {activeProposals.length}
+                <CountUp end={activeProposals.length} duration={1} />
                 {activeProposals.length > 0 && (
                   <motion.div
                     animate={{ scale: [1, 1.2, 1] }}
@@ -82,7 +84,7 @@ export const Dashboard = () => {
 
             <Card className="space-y-2">
               <div className="text-text-muted text-sm font-medium uppercase tracking-wider">Revealed</div>
-              <div className="text-3xl font-bold">{recentResults.length}</div>
+              <div className="text-3xl font-bold"><CountUp end={recentResults.length} /></div>
               <div className="text-xs text-text-muted">Results decrypted</div>
             </Card>
 
@@ -104,8 +106,18 @@ export const Dashboard = () => {
               </Button>
             </Card>
           ) : loading ? (
-            <div className="flex items-center justify-center py-20 gap-3 text-text-muted">
-              <Loader2 className="w-5 h-5 animate-spin" /> Loading proposals from chain...
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)}
+              </div>
+              <div className="grid lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 grid sm:grid-cols-2 gap-6">
+                  {Array.from({ length: 4 }).map((_, i) => <ProposalSkeleton key={i} />)}
+                </div>
+                <div className="space-y-4">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="grid lg:grid-cols-3 gap-8">
@@ -120,13 +132,19 @@ export const Dashboard = () => {
 
                 {activeProposals.length > 0 ? (
                   <div className="grid sm:grid-cols-2 gap-6">
-                    {activeProposals.slice(0, 4).map((proposal) => {
+                    {activeProposals.slice(0, 4).map((proposal, i) => {
                       const quorumPct = Number(proposal.quorum) > 0
                         ? Math.min(Math.round((Number(proposal.voterCount) / Number(proposal.quorum)) * 100), 100)
                         : 0;
 
                       return (
-                        <Card key={proposal.id.toString()} className="flex flex-col justify-between h-full">
+                        <motion.div
+                          key={proposal.id.toString()}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.1, duration: 0.4 }}
+                        >
+                        <Card className="flex flex-col justify-between h-full">
                           <div className="space-y-4">
                             <div className="flex justify-between items-start">
                               <StatusBadge status={proposal.status} />
@@ -160,6 +178,7 @@ export const Dashboard = () => {
                             <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                           </Button>
                         </Card>
+                        </motion.div>
                       );
                     })}
                   </div>

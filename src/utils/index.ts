@@ -13,3 +13,7 @@ export function formatAddress(address: string | null) {
 export function formatNumber(num: number) {
   return new Intl.NumberFormat().format(num);
 }
+
+export function copyToClipboard(text: string): Promise<boolean> {
+  return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+}

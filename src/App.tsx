@@ -10,6 +10,11 @@ import { ProposalDetail } from './pages/ProposalDetail';
 import { CreateProposal } from './pages/CreateProposal';
 import { Treasury } from './pages/Treasury';
 import { Settings } from './pages/Settings';
+import { Delegation } from './pages/Delegation';
+import { Analytics } from './pages/Analytics';
+import { Spaces } from './pages/Spaces';
+import { CreateSpace } from './pages/CreateSpace';
+import { SpaceDetail } from './pages/SpaceDetail';
 import { HowItWorks } from './pages/HowItWorks';
 import { Features } from './pages/Features';
 import { useStore } from './store/useStore';
@@ -55,8 +60,23 @@ export default function App() {
           <Route path="/app/create" element={
             <ProtectedRoute><CreateProposal /></ProtectedRoute>
           } />
+          <Route path="/app/spaces" element={
+            <ProtectedRoute><Spaces /></ProtectedRoute>
+          } />
+          <Route path="/app/create-space" element={
+            <ProtectedRoute><CreateSpace /></ProtectedRoute>
+          } />
+          <Route path="/app/space/:spaceId" element={
+            <ProtectedRoute><SpaceDetail /></ProtectedRoute>
+          } />
           <Route path="/app/treasury" element={
             <ProtectedRoute><Treasury /></ProtectedRoute>
+          } />
+          <Route path="/app/delegation" element={
+            <ProtectedRoute><Delegation /></ProtectedRoute>
+          } />
+          <Route path="/app/analytics" element={
+            <ProtectedRoute><Analytics /></ProtectedRoute>
           } />
           <Route path="/app/settings" element={
             <ProtectedRoute><Settings /></ProtectedRoute>
