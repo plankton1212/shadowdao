@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { useWriteContract } from 'wagmi';
+import { useWriteContract, usePublicClient } from 'wagmi';
+import { decodeEventLog } from 'viem';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 
 export type DeployState = 'idle' | 'submitting' | 'confirming' | 'success' | 'error';
@@ -7,8 +8,10 @@ export type DeployState = 'idle' | 'submitting' | 'confirming' | 'success' | 'er
 export function useCreateProposal() {
   const [deployState, setDeployState] = useState<DeployState>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [proposalId, setProposalId] = useState<bigint | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
 
   const createProposal = useCallback(
     async (title: string, optionCount: number, deadlineTimestamp: number, quorum: number) => {
@@ -26,7 +29,23 @@ export function useCreateProposal() {
         setTxHash(hash);
         setDeployState('confirming');
 
-        // Transaction submitted — UI can track confirmation
+        const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+
+        // Extract proposalId from ProposalCreated event
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: SHADOWVOTE_ABI,
+              data: log.data,
+              topics: (log as any).topics,
+            }) as any;
+            if (decoded.eventName === 'ProposalCreated') {
+              setProposalId(decoded.args.proposalId);
+              break;
+            }
+          } catch {}
+        }
+
         setDeployState('success');
       } catch (err: any) {
         console.error('Create proposal failed:', err);
@@ -34,12 +53,13 @@ export function useCreateProposal() {
         setDeployState('error');
       }
     },
-    [writeContractAsync]
+    [writeContractAsync, publicClient]
   );
 
   const reset = useCallback(() => {
     setDeployState('idle');
     setTxHash(null);
+    setProposalId(null);
     setError(null);
   }, []);
 
@@ -47,6 +67,7 @@ export function useCreateProposal() {
     createProposal,
     deployState,
     txHash,
+    proposalId,
     error,
     reset,
   };

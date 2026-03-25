@@ -1,5 +1,101 @@
 // Update this address after deploying ShadowVote.sol to Sepolia
-export const SHADOWVOTE_ADDRESS = '0x24f1141FA47fFDeb7d4870d6Bd6e4490F3755Fcc' as const;
+export const SHADOWVOTE_ADDRESS = '0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5' as const;
+
+export const SHADOWSPACE_ADDRESS = '0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5' as const;
+
+export const ETHERSCAN_BASE = 'https://sepolia.etherscan.io';
+export const etherscanTx = (hash: string) => `${ETHERSCAN_BASE}/tx/${hash}`;
+export const etherscanAddress = (addr: string) => `${ETHERSCAN_BASE}/address/${addr}`;
+
+export const CATEGORY_LABELS = ['DeFi', 'NFT', 'Infrastructure', 'Gaming', 'Privacy', 'L2', 'DAO Tooling', 'Social'] as const;
+
+export const SHADOWSPACE_ABI = [
+  {
+    name: 'createSpace', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: '_name', type: 'string' as const },
+      { name: '_description', type: 'string' as const },
+      { name: '_category', type: 'uint8' as const },
+      { name: '_isPublic', type: 'bool' as const },
+      { name: '_defaultQuorum', type: 'uint256' as const },
+      { name: '_initialMembers', type: 'address[]' as const },
+    ],
+    outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'joinSpace', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [],
+  },
+  {
+    name: 'addMember', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }, { name: '_member', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'removeMember', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }, { name: '_member', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'updateSpace', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }, { name: '_name', type: 'string' as const }, { name: '_description', type: 'string' as const }],
+    outputs: [],
+  },
+  {
+    name: 'getSpace', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [
+      { name: 'creator', type: 'address' as const },
+      { name: 'name', type: 'string' as const },
+      { name: 'description', type: 'string' as const },
+      { name: 'category', type: 'uint8' as const },
+      { name: 'isPublic', type: 'bool' as const },
+      { name: 'defaultQuorum', type: 'uint256' as const },
+      { name: 'memberCount', type: 'uint256' as const },
+      { name: 'proposalCount', type: 'uint256' as const },
+      { name: 'active', type: 'bool' as const },
+    ],
+  },
+  {
+    name: 'getSpaceCount', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'getMembers', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'address[]' as const }],
+  },
+  {
+    name: 'getUserSpaces', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '_user', type: 'address' as const }],
+    outputs: [{ name: '', type: 'uint256[]' as const }],
+  },
+  {
+    name: 'isSpaceMember', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }, { name: '_user', type: 'address' as const }],
+    outputs: [{ name: '', type: 'bool' as const }],
+  },
+  {
+    name: 'SpaceCreated', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'creator', type: 'address' as const, indexed: true },
+      { name: 'name', type: 'string' as const, indexed: false },
+      { name: 'description', type: 'string' as const, indexed: false },
+      { name: 'category', type: 'uint8' as const, indexed: false },
+      { name: 'isPublic', type: 'bool' as const, indexed: false },
+      { name: 'defaultQuorum', type: 'uint256' as const, indexed: false },
+    ],
+  },
+  {
+    name: 'MemberJoined', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'member', type: 'address' as const, indexed: true },
+    ],
+  },
+] as const;
 
 export const SHADOWVOTE_ABI = [
   {
@@ -117,10 +213,75 @@ export const SHADOWVOTE_ABI = [
     ],
   },
   {
+    name: 'getMyVote',
+    type: 'function' as const,
+    stateMutability: 'view' as const,
+    inputs: [{ name: '_proposalId', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'cancelProposal',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_proposalId', type: 'uint256' as const }],
+    outputs: [],
+  },
+  {
+    name: 'extendDeadline',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: '_proposalId', type: 'uint256' as const },
+      { name: '_newDeadline', type: 'uint256' as const },
+    ],
+    outputs: [],
+  },
+  {
     name: 'ResultsRevealed',
     type: 'event' as const,
     inputs: [
       { name: 'proposalId', type: 'uint256' as const, indexed: true },
     ],
+  },
+  {
+    name: 'ProposalCancelled',
+    type: 'event' as const,
+    inputs: [
+      { name: 'proposalId', type: 'uint256' as const, indexed: true },
+      { name: 'creator', type: 'address' as const, indexed: true },
+    ],
+  },
+  {
+    name: 'DeadlineExtended',
+    type: 'event' as const,
+    inputs: [
+      { name: 'proposalId', type: 'uint256' as const, indexed: true },
+      { name: 'newDeadline', type: 'uint256' as const, indexed: false },
+    ],
+  },
+  {
+    name: 'checkQuorumEncrypted',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_proposalId', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'getEncryptedMaxTally',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_proposalId', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'getEncryptedDifferential',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: '_proposalId', type: 'uint256' as const },
+      { name: '_optionA', type: 'uint8' as const },
+      { name: '_optionB', type: 'uint8' as const },
+    ],
+    outputs: [{ name: '', type: 'uint256' as const }],
   },
 ] as const;

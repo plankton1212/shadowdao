@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 
-export type ProposalStatus = 'VOTING' | 'ENDED' | 'REVEALED';
+export type ProposalStatus = 'VOTING' | 'ENDED' | 'REVEALED' | 'CANCELLED';
 
 export interface Proposal {
   id: bigint;
@@ -16,7 +16,8 @@ export interface Proposal {
   status: ProposalStatus;
 }
 
-function getStatus(deadline: Date, revealed: boolean): ProposalStatus {
+function getStatus(deadline: Date, revealed: boolean, optionCount: number): ProposalStatus {
+  if (optionCount === 0) return 'CANCELLED';
   if (revealed) return 'REVEALED';
   if (deadline.getTime() < Date.now()) return 'ENDED';
   return 'VOTING';
@@ -68,7 +69,7 @@ export function useProposals() {
           quorum,
           voterCount,
           revealed,
-          status: getStatus(deadlineDate, revealed),
+          status: getStatus(deadlineDate, revealed, Number(optionCount)),
         };
       });
 

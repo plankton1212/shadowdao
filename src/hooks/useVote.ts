@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useWriteContract } from 'wagmi';
+import { useWriteContract, usePublicClient } from 'wagmi';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 import { useCofhe } from './useCofhe';
 
@@ -10,12 +10,18 @@ export function useVote() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const { encrypt, initialize, isInitialized } = useCofhe();
 
   const castVote = useCallback(
     async (proposalId: bigint, optionIndex: number) => {
       try {
         setError(null);
+
+        if (optionIndex < 0 || !Number.isInteger(optionIndex)) {
+          throw new Error('Invalid option selected');
+        }
+
         setVoteState('initializing');
 
         if (!isInitialized) {
@@ -24,18 +30,16 @@ export function useVote() {
 
         setVoteState('encrypting');
 
-        // Import Encryptable from core
         const { Encryptable } = await import('@cofhe/sdk');
 
-        // Encrypt the option index as uint32
         const encrypted = await encrypt([Encryptable.uint32(BigInt(optionIndex))]);
         const encryptedVote = encrypted[0];
 
         const encTuple = {
-          ctHash: BigInt(encryptedVote.ctHash),
-          securityZone: encryptedVote.securityZone ?? 0,
-          utype: encryptedVote.utype ?? 4, // 4 = uint32
-          signature: (encryptedVote.signature as `0x${string}`) ?? '0x',
+          ctHash: BigInt(encryptedVote.ctHash || encryptedVote.data?.ctHash || 0),
+          securityZone: encryptedVote.securityZone ?? encryptedVote.data?.securityZone ?? 0,
+          utype: encryptedVote.utype ?? encryptedVote.data?.utype ?? 4,
+          signature: (encryptedVote.signature ?? encryptedVote.data?.signature ?? '0x') as `0x${string}`,
         };
 
         setVoteState('submitting');
@@ -48,6 +52,8 @@ export function useVote() {
 
         setTxHash(hash);
         setVoteState('confirming');
+
+        await publicClient!.waitForTransactionReceipt({ hash });
         setVoteState('success');
       } catch (err: any) {
         console.error('Vote failed:', err);
@@ -56,7 +62,7 @@ export function useVote() {
         setVoteState('error');
       }
     },
-    [writeContractAsync, encrypt, initialize, isInitialized]
+    [writeContractAsync, publicClient, encrypt, initialize, isInitialized]
   );
 
   const reset = useCallback(() => {
