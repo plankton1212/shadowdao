@@ -44,7 +44,6 @@ export const Logo = ({ className = 'w-8 h-8' }: { className?: string }) => (
 );
 
 
-// --- UI Components ---
 
 export const Button = React.forwardRef<
   HTMLButtonElement,
@@ -170,7 +169,6 @@ export const QuorumBar = ({ current, target }: { current: number; target: number
   );
 };
 
-// --- App Shell Components ---
 
 export const Skeleton = ({ className, count = 1, ...props }: { className?: string; count?: number; [key: string]: any }) => (
   <div className="space-y-3">
@@ -853,7 +851,6 @@ export const MobileTabBar = () => {
   );
 };
 
-// --- Page Layouts ---
 
 export const PageWrapper = ({ children }: { children: React.ReactNode }) => (
   <motion.div

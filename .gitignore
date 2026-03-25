@@ -1,4 +1,6 @@
 .claude/
+.cursor/
+.aider/
 node_modules/
 build/
 dist/
