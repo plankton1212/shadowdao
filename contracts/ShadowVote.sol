@@ -17,6 +17,7 @@ contract ShadowVote {
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(uint8 => euint32)) private tallies;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 => mapping(address => euint32)) private userEncryptedVotes;
     mapping(address => uint256[]) private userProposals;
     mapping(address => uint256[]) private userVotes;
     uint256 public proposalCount;
@@ -31,6 +32,8 @@ contract ShadowVote {
     );
     event VoteCast(uint256 indexed proposalId, address indexed voter);
     event ResultsRevealed(uint256 indexed proposalId);
+    event ProposalCancelled(uint256 indexed proposalId, address indexed creator);
+    event DeadlineExtended(uint256 indexed proposalId, uint256 newDeadline);
 
     function createProposal(
         string calldata _title,
@@ -81,6 +84,10 @@ contract ShadowVote {
             FHE.allowThis(tallies[_proposalId][i]);
         }
 
+        // Store encrypted vote for self-verification (permit-gated)
+        userEncryptedVotes[_proposalId][msg.sender] = option;
+        FHE.allowSender(userEncryptedVotes[_proposalId][msg.sender]);
+
         hasVoted[_proposalId][msg.sender] = true;
         proposal.voterCount++;
         userVotes[msg.sender].push(_proposalId);
@@ -100,6 +107,85 @@ contract ShadowVote {
 
         proposal.revealed = true;
         emit ResultsRevealed(_proposalId);
+    }
+
+    /// @notice Check if quorum is met using FHE comparison (encrypted quorum validation)
+    /// @dev Uses FHE.gte() to compare encrypted vote count against quorum threshold
+    ///      without revealing the actual number of votes. Result is an encrypted boolean.
+    function checkQuorumEncrypted(uint256 _proposalId) external returns (ebool) {
+        Proposal storage proposal = proposals[_proposalId];
+        require(proposal.optionCount > 0, "Proposal does not exist");
+
+        // Sum all encrypted tallies to get total encrypted vote count
+        euint32 totalEncrypted = tallies[_proposalId][0];
+        for (uint8 i = 1; i < proposal.optionCount; i++) {
+            totalEncrypted = FHE.add(totalEncrypted, tallies[_proposalId][i]);
+        }
+
+        // FHE.gte: encrypted comparison — is totalVotes >= quorum?
+        // Neither value is revealed; result is an encrypted boolean
+        euint32 quorumEncrypted = FHE.asEuint32(uint32(proposal.quorum));
+        return FHE.gte(totalEncrypted, quorumEncrypted);
+    }
+
+    /// @notice Find the maximum encrypted tally across all options (private winner detection)
+    /// @dev Uses FHE.max() to determine the highest vote count without revealing any tallies.
+    ///      The returned euint32 handle can only be decrypted after FHE.allowPublic().
+    function getEncryptedMaxTally(uint256 _proposalId) external returns (euint32) {
+        Proposal storage proposal = proposals[_proposalId];
+        require(proposal.optionCount > 0, "Proposal does not exist");
+
+        euint32 maxTally = tallies[_proposalId][0];
+        for (uint8 i = 1; i < proposal.optionCount; i++) {
+            maxTally = FHE.max(maxTally, tallies[_proposalId][i]);
+        }
+        return maxTally;
+    }
+
+    /// @notice Compute encrypted vote differential between two options
+    /// @dev Uses FHE.sub() to calculate the difference between two option tallies
+    ///      without revealing either value. Useful for margin-of-victory analysis.
+    function getEncryptedDifferential(
+        uint256 _proposalId,
+        uint8 _optionA,
+        uint8 _optionB
+    ) external returns (euint32) {
+        Proposal storage proposal = proposals[_proposalId];
+        require(_optionA < proposal.optionCount && _optionB < proposal.optionCount, "Invalid option");
+
+        // FHE.sub: encrypted subtraction — difference without revealing counts
+        return FHE.sub(tallies[_proposalId][_optionA], tallies[_proposalId][_optionB]);
+    }
+
+    function cancelProposal(uint256 _proposalId) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(msg.sender == proposal.creator, "Only creator can cancel");
+        require(proposal.voterCount == 0, "Cannot cancel after votes cast");
+        require(!proposal.revealed, "Already revealed");
+        require(proposal.optionCount > 0, "Proposal does not exist");
+
+        // Set deadline to past to prevent voting, zero out optionCount to mark cancelled
+        proposal.deadline = 0;
+        proposal.optionCount = 0;
+
+        emit ProposalCancelled(_proposalId, msg.sender);
+    }
+
+    function extendDeadline(uint256 _proposalId, uint256 _newDeadline) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(msg.sender == proposal.creator, "Only creator can extend");
+        require(!proposal.revealed, "Already revealed");
+        require(proposal.optionCount > 0, "Proposal does not exist");
+        require(_newDeadline > proposal.deadline, "New deadline must be later");
+
+        proposal.deadline = _newDeadline;
+
+        emit DeadlineExtended(_proposalId, _newDeadline);
+    }
+
+    function getMyVote(uint256 _proposalId) external view returns (euint32) {
+        require(hasVoted[_proposalId][msg.sender], "Not voted");
+        return userEncryptedVotes[_proposalId][msg.sender];
     }
 
     function getEncryptedTally(uint256 _proposalId, uint8 _optionIndex) external view returns (euint32) {
