@@ -1,0 +1,5 @@
+{
+  "name": "ShadowDAO",
+  "description": "Privacy-first encrypted voting protocol for DAOs, powered by FHE.",
+  "requestFramePermissions": []
+}
