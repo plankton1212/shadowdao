@@ -2,22 +2,25 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, Globe, Users, Vote as VoteIcon, Shield, Lock, Plus,
-  Loader2, CheckCircle2, Crown, LogOut, Archive, UserMinus, Copy,
+  Loader2, Crown, LogOut, Archive, UserMinus, ArrowRight,
   ExternalLink,
 } from 'lucide-react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Card, Badge, AppLayout, PageWrapper, Button, CategoryEmoji, CopyButton } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, CategoryEmoji, CopyButton } from '../components/UI';
 import { useSpaces } from '../hooks/useSpaces';
+import { useProposals, Proposal } from '../hooks/useProposals';
 import { useCreateSpace } from '../hooks/useCreateSpace';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { CATEGORY_LABELS, SHADOWSPACE_ADDRESS, SHADOWSPACE_ABI, etherscanAddress } from '../config/contract';
 import { formatAddress } from '../utils';
+import { formatDistanceToNow } from 'date-fns';
 
 export const SpaceDetail = () => {
   const navigate = useNavigate();
   const { spaceId } = useParams();
   const { address } = useAccount();
   const { spaces, loading, refetch, checkIsMember, getMembers } = useSpaces();
+  const { proposals: allProposals, getProposalIdsBySpace } = useProposals();
   const { joinSpace, leaveSpace, archiveSpace } = useCreateSpace();
 
   const [isMember, setIsMember] = useState(false);
@@ -27,6 +30,7 @@ export const SpaceDetail = () => {
   const [leaving, setLeaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [spaceProposals, setSpaceProposals] = useState<Proposal[]>([]);
 
   // Remove member
   const { writeContractAsync } = useWriteContract();
@@ -55,6 +59,17 @@ export const SpaceDetail = () => {
     };
     check();
   }, [space, id, checkIsMember, getMembers]);
+
+  // Fetch proposals for this space
+  useEffect(() => {
+    const fetchSpaceProposals = async () => {
+      if (!space) return;
+      const ids = await getProposalIdsBySpace(id);
+      const matched = allProposals.filter((p) => ids.some((pid) => pid === p.id));
+      setSpaceProposals(matched);
+    };
+    fetchSpaceProposals();
+  }, [space, id, allProposals, getProposalIdsBySpace]);
 
   const handleJoin = async () => {
     setJoining(true);
@@ -272,7 +287,7 @@ export const SpaceDetail = () => {
                 </Link>
               )}
             </div>
-            {Number(space.proposalCount) === 0 ? (
+            {spaceProposals.length === 0 ? (
               <div className="text-center py-10 space-y-3">
                 <VoteIcon className="w-10 h-10 text-text-muted mx-auto" />
                 <p className="text-text-muted font-medium">No proposals yet</p>
@@ -281,8 +296,41 @@ export const SpaceDetail = () => {
                 )}
               </div>
             ) : (
-              <div className="p-3 bg-surface-highlight rounded-xl text-sm text-primary-accent font-medium">
-                {Number(space.proposalCount)} proposal{Number(space.proposalCount) !== 1 ? 's' : ''} created in this Space
+              <div className="space-y-3">
+                {spaceProposals.map((proposal, i) => (
+                  <motion.div
+                    key={proposal.id.toString()}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                  >
+                    <button
+                      onClick={() => navigate(`/app/proposal/${proposal.id.toString()}`)}
+                      className="w-full text-left p-4 rounded-xl border border-default bg-bg-base hover:border-primary-accent/30 hover:bg-surface-tinted transition-all group"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <StatusBadge status={proposal.status} />
+                            <span className="text-xs text-text-muted font-mono">#{proposal.id.toString()}</span>
+                          </div>
+                          <p className="font-semibold text-secondary-accent truncate">{proposal.title}</p>
+                          <div className="flex gap-3 text-xs text-text-muted flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3 h-3" /> {proposal.voterCount.toString()} votes
+                            </span>
+                            <span>
+                              {proposal.status === 'VOTING'
+                                ? `Ends in ${formatDistanceToNow(proposal.deadline)}`
+                                : `Ended ${proposal.deadline.toLocaleDateString()}`}
+                            </span>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-primary-accent group-hover:translate-x-1 transition-all shrink-0" />
+                      </div>
+                    </button>
+                  </motion.div>
+                ))}
               </div>
             )}
           </Card>

@@ -19,13 +19,14 @@ import {
   Download,
 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar, Confetti, FheBadge } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar, Confetti, FheBadge, CategoryEmoji } from '../components/UI';
 import { useAccount } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
 import { useVote } from '../hooks/useVote';
 import { useReveal } from '../hooks/useReveal';
 import { useProposalAdmin } from '../hooks/useProposalAdmin';
 import { useVerifyVote } from '../hooks/useVerifyVote';
+import { useSpaces } from '../hooks/useSpaces';
 import { etherscanTx, SHADOWVOTE_ADDRESS } from '../config/contract';
 import { cn, formatAddress } from '../utils';
 
@@ -59,10 +60,12 @@ export const ProposalDetail = () => {
   const { revealResults, fetchDecryptedResults, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
   const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError } = useVerifyVote();
+  const { spaces, checkIsMember } = useSpaces();
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [checkingVote, setCheckingVote] = useState(true);
+  const [isSpaceMember, setIsSpaceMember] = useState<boolean | null>(null);
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState('');
   const [isVoting, setIsVoting] = useState(false);
@@ -72,14 +75,18 @@ export const ProposalDetail = () => {
   const proposal = proposals.find((p) => p.id === proposalId);
   const countdown = useCountdown(proposal?.deadline || new Date());
 
-  // Check if user has voted
+  // Check if user has voted + space membership
   useEffect(() => {
     const check = async () => {
       if (!proposal) return;
       try {
         setCheckingVote(true);
-        const voted = await checkHasVoted(proposalId);
+        const [voted, memberStatus] = await Promise.all([
+          checkHasVoted(proposalId),
+          proposal.spaceGated ? checkIsMember(proposal.spaceId) : Promise.resolve(null),
+        ]);
         setHasVoted(voted);
+        setIsSpaceMember(memberStatus);
       } catch (err) {
         console.warn('[ShadowDAO] Failed to check vote status:', err);
       } finally {
@@ -87,7 +94,7 @@ export const ProposalDetail = () => {
       }
     };
     check();
-  }, [proposal, proposalId, checkHasVoted]);
+  }, [proposal, proposalId, checkHasVoted, checkIsMember]);
 
   // Fetch decrypted results if revealed
   useEffect(() => {
@@ -144,7 +151,9 @@ export const ProposalDetail = () => {
   };
 
   const isCreator = address?.toLowerCase() === proposal.creator.toLowerCase();
-  const canVote = proposal.status === 'VOTING' && !hasVoted && !checkingVote && voteState === 'idle';
+  const spaceInfo = proposal.spaceGated ? spaces.find((s) => s.id === proposal.spaceId) : null;
+  const blockedBySpace = proposal.spaceGated && isSpaceMember === false;
+  const canVote = proposal.status === 'VOTING' && !hasVoted && !checkingVote && voteState === 'idle' && !blockedBySpace;
   const optionLabels = Array.from({ length: proposal.optionCount }, (_, i) => `Option ${i + 1}`);
 
   const handleCancel = async () => {
@@ -217,6 +226,45 @@ export const ProposalDetail = () => {
 
             <QuorumBar current={Number(proposal.voterCount)} target={Number(proposal.quorum)} />
           </Card>
+
+          {/* Space Gating Banner */}
+          {proposal.spaceGated && (
+            <Card hover={false} className={cn(
+              'p-4 flex items-start gap-3',
+              isSpaceMember === false
+                ? 'bg-danger/5 border-danger/20'
+                : 'bg-surface-highlight border-primary-accent/20'
+            )}>
+              <Lock className={cn('w-5 h-5 shrink-0 mt-0.5', isSpaceMember === false ? 'text-danger' : 'text-primary-accent')} />
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn('text-sm font-bold', isSpaceMember === false ? 'text-danger' : 'text-primary-accent')}>
+                    Space-Gated Voting
+                  </span>
+                  {spaceInfo && (
+                    <button
+                      onClick={() => navigate(`/app/spaces/${proposal.spaceId.toString()}`)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-white/80 rounded-badge text-[10px] font-bold text-secondary-accent border border-default hover:border-primary-accent/40 transition-colors"
+                    >
+                      <CategoryEmoji label={spaceInfo.categoryLabel} className="text-[10px]" />
+                      {spaceInfo.name}
+                    </button>
+                  )}
+                </div>
+                {isSpaceMember === false ? (
+                  <p className="text-xs text-danger">
+                    You are not a member of this Space. Join the Space to cast your vote.
+                  </p>
+                ) : isSpaceMember === true ? (
+                  <p className="text-xs text-primary-accent">
+                    You are a member of this Space and can vote on this proposal.
+                  </p>
+                ) : (
+                  <p className="text-xs text-text-muted">Checking Space membership...</p>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* Creator Admin Panel */}
           {isCreator && proposal.status !== 'CANCELLED' && proposal.status !== 'REVEALED' && (

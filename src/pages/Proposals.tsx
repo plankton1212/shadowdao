@@ -1,22 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2 } from 'lucide-react';
+import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, ProposalSkeleton } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, ProposalSkeleton, CategoryEmoji } from '../components/UI';
 import { useProposals, ProposalStatus } from '../hooks/useProposals';
-import { cn, formatAddress } from '../utils';
+import { useSpaces, Space } from '../hooks/useSpaces';
+import { cn } from '../utils';
 import { formatDistanceToNow } from 'date-fns';
 
 export const Proposals = () => {
   const navigate = useNavigate();
   const { proposals, loading, error, refetch } = useProposals();
+  const { spaces } = useSpaces();
   const [filter, setFilter] = useState<ProposalStatus | 'ALL'>('ALL');
+  const [spaceFilter, setSpaceFilter] = useState<bigint | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
+
+  const spaceMap = new Map<string, Space>(spaces.map((s) => [s.id.toString(), s]));
 
   const filteredProposals = proposals.filter((p) => {
     const matchesFilter = filter === 'ALL' || p.status === filter;
     const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
+    const matchesSpace = spaceFilter === 'ALL' || (p.spaceGated && p.spaceId === spaceFilter);
+    return matchesFilter && matchesSearch && matchesSpace;
   });
 
   return (
@@ -25,16 +31,33 @@ export const Proposals = () => {
         <div className="space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <h2 className="text-3xl font-bold">Proposals</h2>
-            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                <input
-                  type="text"
-                  placeholder="Search proposals..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-input border border-default bg-white focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all"
-                />
+            <div className="flex flex-col gap-3 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                  <input
+                    type="text"
+                    placeholder="Search proposals..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-input border border-default bg-white focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all"
+                  />
+                </div>
+                {/* Space filter */}
+                {spaces.length > 0 && (
+                  <select
+                    value={spaceFilter === 'ALL' ? 'ALL' : spaceFilter.toString()}
+                    onChange={(e) => setSpaceFilter(e.target.value === 'ALL' ? 'ALL' : BigInt(e.target.value))}
+                    className="px-3 py-2.5 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all cursor-pointer"
+                  >
+                    <option value="ALL">All Spaces</option>
+                    {spaces.map((s) => (
+                      <option key={s.id.toString()} value={s.id.toString()}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                 {([
@@ -89,9 +112,25 @@ export const Proposals = () => {
                   >
                     <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
                       <div className="space-y-3 flex-1">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <StatusBadge status={proposal.status} />
                           <span className="text-xs text-text-muted font-mono">#{proposal.id.toString()}</span>
+                          {proposal.spaceGated && (() => {
+                            const space = spaceMap.get(proposal.spaceId.toString());
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-highlight text-primary-accent rounded-badge text-[10px] font-bold border border-primary-accent/20">
+                                <Lock className="w-2.5 h-2.5" />
+                                {space ? (
+                                  <>
+                                    <CategoryEmoji label={space.categoryLabel} className="text-[10px]" />
+                                    {space.name}
+                                  </>
+                                ) : (
+                                  `Space #${proposal.spaceId.toString()}`
+                                )}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <h3 className="text-xl font-bold text-secondary-accent">{proposal.title}</h3>
                         <div className="flex flex-wrap gap-4 text-sm text-text-muted">
@@ -141,6 +180,7 @@ export const Proposals = () => {
                       size="sm"
                       onClick={() => {
                         setFilter('ALL');
+                        setSpaceFilter('ALL');
                         setSearch('');
                       }}
                     >

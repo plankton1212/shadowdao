@@ -14,6 +14,8 @@ export interface Proposal {
   voterCount: bigint;
   revealed: boolean;
   status: ProposalStatus;
+  spaceId: bigint;
+  spaceGated: boolean;
 }
 
 function getStatus(deadline: Date, revealed: boolean, optionCount: number): ProposalStatus {
@@ -32,7 +34,6 @@ export function useProposals() {
 
   const fetchProposals = useCallback(async () => {
     if (!publicClient) return;
-
     try {
       setLoading(true);
       setError(null);
@@ -58,7 +59,7 @@ export function useProposals() {
       const results = await Promise.all(proposalPromises);
 
       const fetchedProposals: Proposal[] = results.map((result: any, index) => {
-        const [creator, title, optionCount, deadline, quorum, voterCount, revealed] = result;
+        const [creator, title, optionCount, deadline, quorum, voterCount, revealed, spaceId, spaceGated] = result;
         const deadlineDate = new Date(Number(deadline) * 1000);
         return {
           id: BigInt(index),
@@ -70,6 +71,8 @@ export function useProposals() {
           voterCount,
           revealed,
           status: getStatus(deadlineDate, revealed, Number(optionCount)),
+          spaceId: spaceId ?? 0n,
+          spaceGated: spaceGated ?? false,
         };
       });
 
@@ -127,6 +130,24 @@ export function useProposals() {
     }
   }, [publicClient, address]);
 
+  /** Returns proposal IDs linked to a specific Space */
+  const getProposalIdsBySpace = useCallback(
+    async (spaceId: bigint): Promise<bigint[]> => {
+      if (!publicClient) return [];
+      try {
+        return (await publicClient.readContract({
+          address: SHADOWVOTE_ADDRESS,
+          abi: SHADOWVOTE_ABI,
+          functionName: 'getProposalsBySpace',
+          args: [spaceId],
+        } as any)) as bigint[];
+      } catch {
+        return [];
+      }
+    },
+    [publicClient]
+  );
+
   useEffect(() => {
     fetchProposals();
   }, [fetchProposals]);
@@ -139,5 +160,6 @@ export function useProposals() {
     checkHasVoted,
     getUserProposalIds,
     getUserVoteIds,
+    getProposalIdsBySpace,
   };
 }

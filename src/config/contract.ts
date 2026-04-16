@@ -1,5 +1,5 @@
-// Update this address after deploying ShadowVote.sol to Sepolia
-export const SHADOWVOTE_ADDRESS = '0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5' as const;
+// Wave 2: Space-gated voting. ShadowVote redeployed with spaceId + spaceGated in Proposal.
+export const SHADOWVOTE_ADDRESS = '0x625b9b6cBd467E69b4981457e7235EBd2874EF86' as const;
 
 export const SHADOWSPACE_ADDRESS = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88' as const;
 
@@ -136,6 +136,8 @@ export const SHADOWVOTE_ABI = [
       { name: '_optionCount', type: 'uint8' as const },
       { name: '_deadline', type: 'uint256' as const },
       { name: '_quorum', type: 'uint256' as const },
+      { name: '_spaceId', type: 'uint256' as const },
+      { name: '_spaceGated', type: 'bool' as const },
     ],
     outputs: [{ name: '', type: 'uint256' as const }],
   },
@@ -178,6 +180,8 @@ export const SHADOWVOTE_ABI = [
       { name: 'quorum', type: 'uint256' as const },
       { name: 'voterCount', type: 'uint256' as const },
       { name: 'revealed', type: 'bool' as const },
+      { name: 'spaceId', type: 'uint256' as const },
+      { name: 'spaceGated', type: 'bool' as const },
     ],
   },
   {
@@ -231,6 +235,8 @@ export const SHADOWVOTE_ABI = [
       { name: 'optionCount', type: 'uint8' as const, indexed: false },
       { name: 'deadline', type: 'uint256' as const, indexed: false },
       { name: 'quorum', type: 'uint256' as const, indexed: false },
+      { name: 'spaceId', type: 'uint256' as const, indexed: false },
+      { name: 'spaceGated', type: 'bool' as const, indexed: false },
     ],
   },
   {
@@ -312,5 +318,33 @@ export const SHADOWVOTE_ABI = [
       { name: '_optionB', type: 'uint8' as const },
     ],
     outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'getProposalsBySpace',
+    type: 'function' as const,
+    stateMutability: 'view' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'uint256[]' as const }],
+  },
+  {
+    name: 'setShadowSpaceContract',
+    type: 'function' as const,
+    stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_shadowSpace', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'shadowSpaceContract',
+    type: 'function' as const,
+    stateMutability: 'view' as const,
+    inputs: [],
+    outputs: [{ name: '', type: 'address' as const }],
+  },
+  {
+    name: 'owner',
+    type: 'function' as const,
+    stateMutability: 'view' as const,
+    inputs: [],
+    outputs: [{ name: '', type: 'address' as const }],
   },
 ] as const;

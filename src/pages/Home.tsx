@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, PageWrapper, Navbar, Accordion, Logo } from '../components/UI';
+import { SHADOWVOTE_ADDRESS, etherscanAddress } from '../config/contract';
 import { useAccount, useConnect } from 'wagmi';
 import { cn } from '../utils';
 
@@ -246,7 +247,7 @@ export const Home = () => {
       <Section className="bg-white/50 border-y border-black/5 py-14">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
           {[
-            { val: 10, suffix: '', label: 'FHE Operations', prefix: '' },
+            { val: 13, suffix: '', label: 'FHE Operations', prefix: '' },
             { val: 2, suffix: '', label: 'Smart Contracts', prefix: '' },
             { val: 100, suffix: '%', label: 'Ballot Privacy', prefix: '' },
             { val: 0, suffix: '', label: 'Votes Exposed', prefix: '' },
@@ -409,7 +410,7 @@ export const Home = () => {
               FHE Operations<br /><span className="text-primary-accent">On-Chain</span>
             </motion.h2>
             <p className="text-white/60 text-lg leading-relaxed">
-              8 distinct Fhenix FHE operations in ShadowVote.sol. Every vote is processed entirely on encrypted data — the contract never sees a single plaintext value.
+              13 distinct Fhenix FHE operations across 2 contracts. Every vote is processed entirely on encrypted data — the contract never sees a single plaintext value.
             </p>
             <div className="flex gap-3">
               <Badge variant="success">euint32</Badge>
@@ -538,10 +539,10 @@ export const Home = () => {
 
           <StaggerContainer className="grid md:grid-cols-4 gap-8">
             {[
-              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted voting, DAO spaces, permits, admin controls. 10 FHE operations.' },
-              { phase: 'Wave 2', title: 'Spaces', status: 'Live', desc: 'My Spaces dashboard, leave/archive, FHE step visualizer, Explore tabs.' },
-              { phase: 'Wave 3', title: 'Treasury', status: 'Next', desc: 'Encrypted balance (euint64), weighted voting (FHE.mul), solvency checks.' },
-              { phase: 'Wave 4-5', title: 'Production', status: 'Planned', desc: 'Delegation, analytics, gasless voting, SDK, multi-chain.' },
+              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted proposals, FHE tallying, permit verify, admin cancel/extend. 10 FHE ops.' },
+              { phase: 'Wave 2', title: 'Space-Gated', status: 'Live', desc: 'Space-gated voting, ACL wiring, encrypted quorum, differential tally. 13 FHE ops.' },
+              { phase: 'Wave 3', title: 'Treasury', status: 'Next', desc: 'Encrypted DAO treasury (euint64), weighted voting (FHE.mul), solvency proofs.' },
+              { phase: 'Wave 4-5', title: 'Production', status: 'Planned', desc: 'Delegation, gasless voting (ERC-2771), analytics, SDK, multi-chain.' },
             ].map((item, i) => (
               <StaggerItem key={i}>
                 <div className="space-y-4 relative">
@@ -588,7 +589,7 @@ export const Home = () => {
                   <Github className="w-5 h-5" /> GitHub
                 </Button>
               </a>
-              <a href="https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5" target="_blank" rel="noopener noreferrer">
+              <a href={etherscanAddress(SHADOWVOTE_ADDRESS)} target="_blank" rel="noopener noreferrer">
                 <Button size="lg" variant="outline" className="gap-2">
                   <ExternalLink className="w-5 h-5" /> Etherscan
                 </Button>

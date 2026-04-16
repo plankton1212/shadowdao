@@ -14,7 +14,14 @@ export function useCreateProposal() {
   const publicClient = usePublicClient();
 
   const createProposal = useCallback(
-    async (title: string, optionCount: number, deadlineTimestamp: number, quorum: number) => {
+    async (
+      title: string,
+      optionCount: number,
+      deadlineTimestamp: number,
+      quorum: number,
+      spaceId: bigint = 0n,
+      spaceGated: boolean = false
+    ) => {
       try {
         setError(null);
         setDeployState('submitting');
@@ -23,7 +30,7 @@ export function useCreateProposal() {
           address: SHADOWVOTE_ADDRESS,
           abi: SHADOWVOTE_ABI,
           functionName: 'createProposal',
-          args: [title, optionCount, BigInt(deadlineTimestamp), BigInt(quorum)],
+          args: [title, optionCount, BigInt(deadlineTimestamp), BigInt(quorum), spaceId, spaceGated],
         } as any);
 
         setTxHash(hash);
@@ -31,7 +38,6 @@ export function useCreateProposal() {
 
         const receipt = await publicClient!.waitForTransactionReceipt({ hash });
 
-        // Extract proposalId from ProposalCreated event
         for (const log of receipt.logs) {
           try {
             const decoded = decodeEventLog({
@@ -63,12 +69,5 @@ export function useCreateProposal() {
     setError(null);
   }, []);
 
-  return {
-    createProposal,
-    deployState,
-    txHash,
-    proposalId,
-    error,
-    reset,
-  };
+  return { createProposal, deployState, txHash, proposalId, error, reset };
 }
