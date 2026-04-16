@@ -321,102 +321,69 @@ The permit system is also something we didn't anticipate. Every `decryptForView`
 
 #### Space-Gated Voting
 
-The biggest governance addition this wave. Proposals can be linked to a Space — if `spaceGated = true`, only Space members pass the on-chain gate in `vote()`.
+The biggest governance addition this wave. Creator links a proposal to a Space — `vote()` enforces membership on-chain via cross-contract call to `IShadowSpace.isSpaceMember()`.
 
-- Cross-contract call: `IShadowSpace(shadowSpaceContract).isSpaceMember(spaceId, msg.sender)` — non-members revert, no silent fail
-- `createProposal()` takes 2 new params: `_spaceId` + `_spaceGated`. Contract stores both in the Proposal struct and calls `incrementProposalCount()` on ShadowSpace
-- `getProposalsBySpace(spaceId)` — returns all proposal IDs linked to a Space via `spaceProposals[]` mapping
-- Bidirectional wiring: `setShadowSpaceContract()` on ShadowVote + `setShadowVoteContract()` on ShadowSpace. Script: `scripts/wire.ts`
+- `createProposal()` takes `_spaceId` + `_spaceGated` — calls `IShadowSpace.incrementProposalCount(spaceId)` on creation
+- `vote()` gate: `require(IShadowSpace(shadowSpaceContract).isSpaceMember(proposal.spaceId, msg.sender))` — non-members revert
+- `getProposalsBySpace(spaceId)` — returns all proposal IDs linked to a Space
+- Bidirectional wiring via `scripts/wire.ts`: `setShadowSpaceContract()` + `setShadowVoteContract()`
 
 #### Encrypted On-Chain Analytics
 
-Three new FHE read functions — query encrypted tallies without revealing raw data.
+Three new FHE functions — query tallies without revealing counts.
 
-- `checkQuorumEncrypted(proposalId)` — `FHE.gte(totalVotes, quorum)` → `ebool`. Checks if quorum met entirely on ciphertext, no vote count leaked
-- `getEncryptedMaxTally(proposalId)` — `FHE.max(tallies[0], tallies[1])` → finds leading option without revealing any tally
-- `getEncryptedDifferential(proposalId, optionA, optionB)` — `FHE.sub(tallies[A], tallies[B])` → encrypted margin of victory
+- `checkQuorumEncrypted()` — `FHE.gte(totalVotes, quorum)` → quorum check entirely on ciphertext
+- `getEncryptedMaxTally()` — `FHE.max(tallies[0], tallies[1])` → leading option without revealing values
+- `getEncryptedDifferential()` — `FHE.sub(tallies[A], tallies[B])` → encrypted margin
+
+#### Cross-Contract ACL
+
+- `incrementProposalCount()` gated: `require(msg.sender == shadowVoteContract)` — Wave 1 had no gate
+- `owner` pattern on both contracts — only deployer sets contract references
 
 #### Spaces Lifecycle
 
-- `leaveSpace()` — member exits voluntarily; creator is blocked (`require(msg.sender != creator)`) and must archive instead
-- `archiveSpace()` — soft-delete: `active = false`, emits `SpaceArchived`. Irreversible on-chain
-- `removeMember()` fix — Wave 1 only cleared `isMember` mapping but left ghost addresses in `memberLists[]`. Now uses swap-and-pop cleanup so `getMembers()` is accurate
-- `setShadowVoteContract(address)` + ACL — `incrementProposalCount` gated: `require(msg.sender == shadowVoteContract)`. Wave 1 had no gate
+- `leaveSpace()` — member exits; creator blocked, must archive instead
+- `archiveSpace()` — `active = false`, emits `SpaceArchived`, irreversible
+- `removeMember()` fix — swap-and-pop on `memberLists[]` so `getMembers()` returns clean data
 
 #### Frontend
 
-- **5-step proposal creation** — new Step 2: Space selector. Pick "Global" or a Space you belong to. Space quorum auto-fills from `defaultQuorum`
-- **Space badge on proposals** — lock icon + category emoji + Space name on every gated proposal card. Dropdown filter by Space
-- **Membership gate UI** — ProposalDetail shows green banner if you're a member, red "Join the Space to vote" if not. Vote button disabled
-- **Live Space proposals** — SpaceDetail fetches actual proposals via `getProposalsBySpace()` with status badges, vote counts, countdown
-- FHE step visualizer, confetti on vote, dashboard stats, My Spaces tabs, leave/archive buttons — all shipped
-- New page: `/app/spaces/:id` with live proposal list
+- 5-step proposal creation — new Step 2: Space selector (Global or Space-gated), quorum pre-fills from `defaultQuorum`
+- Space badge on proposal cards: lock icon + `CategoryEmoji` + Space name. Dropdown filter by Space
+- ProposalDetail: membership banner (green = can vote, red = "Join the Space"). Vote button disabled for non-members
+- SpaceDetail: live proposal list from `getProposalsBySpace()` with status, votes, countdown
+- 60 E2E tests on Sepolia, both accounts, cross-contract ACL, FHE analytics
 
 ---
 
 ### 🔜 Wave 3 Plan
 
-**Encrypted Treasury** — `ShadowTreasury.sol`, new contract. DAO balance stored as `euint64` — invisible on Etherscan, only owner decrypts via permit.
+**Encrypted Treasury** — `ShadowTreasury.sol`. DAO balance as `euint64`, invisible on Etherscan. `deposit()` via `FHE.add`, `withdraw()` with `FHE.gte` solvency gate. `proposeAllocation()` links budget to proposal, `executeAllocation()` releases ETH after reveal + quorum.
 
-- `deposit()` → `FHE.add(encryptedBalance, amount)` — balance grows on ciphertext, Etherscan shows zero-value internal tx
-- `withdraw(InEuint64 amount)` → `FHE.gte(balance, amount)` solvency gate before `FHE.sub`. Contract pays zero if insolvent, no revert leaking state
-- `proposeAllocation(proposalId, InEuint64 amount)` — links a budget line to a ShadowVote proposal. Amount encrypted, nobody sees how much is at stake
-- `executeAllocation(proposalId)` — releases ETH only if `proposal.revealed == true && votesFor >= quorum`. Treasury + governance in one flow
-- Invariant enforced: `sum(allocations) <= encryptedBalance` — verified with `FHE.gte` before every allocation
+**Weighted Voting** — `setVotingPower(voter, InEuint32)` per address. Tally: `FHE.add(tally, FHE.mul(vote, power))`. Self-decrypt own weight via `FHE.allowSender`.
 
-**Weighted Voting** — `ShadowVoteV2.sol` upgrade. Vote power is per-address, encrypted.
+**IPFS Descriptions** — `bytes32 descriptionHash` on-chain, Markdown body on IPFS, rendered in ProposalDetail.
 
-- `setVotingPower(voter, InEuint32 power)` — Space admin sets encrypted weight. Nobody sees who has how much power
-- Tally: `FHE.add(tally[option], FHE.mul(encryptedVote, encryptedPower))` — weight applied on ciphertext, even the contract doesn't know individual power
-- `getEncryptedVotingPower(address)` → self-decrypt via `FHE.allowSender`. Only you see your own weight
-- "Weighted" badge on proposal cards in the UI — users know power differs but not by how much
+**FHE Visualizer** — animated step diagram: browser → contract → CoFHE → reveal.
 
-**Proposal Description on IPFS** — `bytes32 descriptionHash` stored on-chain per proposal. Markdown body pinned to Pinata/IPFS, rendered in ProposalDetail.
-
-**Settings page** — dark/light theme toggle (CSS variables), notification preferences, default quorum per user
-
-**+3 FHE ops:** `FHE.mul` (weighted tally), `FHE.sub` (treasury withdraw), `FHE.gte` (solvency) → **16 total**
+**+3 FHE ops:** `FHE.mul`, `FHE.sub`, `FHE.gte` → **16 total**
 
 ---
 
 ### 📋 Wave 4 Plan
 
-**Encrypted Delegation** — `ShadowDelegate.sol`, new contract. Delegate your vote to another address without revealing your power.
+**Encrypted Delegation** — `ShadowDelegate.sol`. `delegate(to)` transfers `euint32` power via `FHE.add`, original zeroed with `FHE.select`. `undelegate()` reclaims. `voteAsDelegate()` casts with combined power. Leaderboard via `FHE.max` — rank only, no amounts.
 
-- `delegate(address to)` — transfers `euint32 votingPower` to delegate via `FHE.add(delegatePower, myPower)`. Original zeroed with `FHE.select(true, zero, myPower)`
-- `undelegate()` — reclaims power. Delegate's accumulated power reduced via `FHE.sub`
-- `voteAsDelegate(proposalId, encryptedVote)` — delegate casts with combined power. Tally: `FHE.add(tally, FHE.mul(vote, delegatedPower))`
-- `getTopDelegates(limit)` — leaderboard sorted by `FHE.max` comparisons. Only rank visible, not amounts
-- `getDelegatedPower(address)` — self-decrypt via `FHE.allowSender`. Only you see how much was delegated to you
-- Double-delegation blocked: `require(delegatedTo[msg.sender] == address(0))` — no chaining
+**On-Chain Discussion** — `postComment(proposalId, ipfsHash)`, emits `CommentPosted`. Markdown from IPFS, paginated reads.
 
-**On-Chain Discussion** — lightweight comment layer per proposal.
+**Analytics Dashboard** — participation line chart, quorum donut, category bar chart, voter heatmap, top voters leaderboard. All from `getLogs`, no indexer.
 
-- `postComment(proposalId, bytes32 ipfsHash)` — stores IPFS pointer on-chain, emits `CommentPosted(proposalId, author, ipfsHash)`
-- Frontend renders Markdown from IPFS. Timestamps from block numbers. Author address shown with ENS fallback
-- `getCommentCount(proposalId)` / `getComment(proposalId, index)` — paginated reads
+**Proposal Templates** — budget allocation, election, parameter change. Saved per-Space.
 
-**Analytics Dashboard** — full governance analytics from on-chain data.
+**Activity Feed** — live `ProposalCreated` / `VoteCast` / `ResultsRevealed` / `MemberJoined` stream, filterable.
 
-- Participation rate chart — `VoteCast` events over time, line chart via recharts
-- Quorum success rate — donut: proposals that hit quorum vs didn't
-- Proposals by category — bar chart grouped by Space category
-- Voter activity heatmap — calendar grid colored by vote frequency per day
-- All data from `getLogs` — no backend, no indexer
-
-**Activity Feed** — real-time event stream on Dashboard.
-
-- `ProposalCreated`, `VoteCast`, `ResultsRevealed`, `SpaceCreated`, `MemberJoined` — parsed from `getLogs` with block timestamps
-- Filterable by event type. Auto-refreshes every 30 seconds
-
-**Proposal Templates Library** — reusable templates beyond Yes/No.
-
-- Budget allocation (Option A: 100K / Option B: 50K / Option C: reject)
-- Election (candidate list, single winner)
-- Parameter change (specific value options)
-- Saved per-Space, creator picks from library in Step 2
-
-**+2 FHE ops:** `FHE.select` (delegation zero-out), `FHE.max` (leaderboard sort) → **18 total**
+**+2 FHE ops:** `FHE.select`, `FHE.max` → **18 total**
 
 ---
 
@@ -434,9 +401,9 @@ Three new FHE read functions — query encrypted tallies without revealing raw d
 
 ## What's next for ShadowDAO
 
-- **Wave 3: Encrypted treasury** — `ShadowTreasury.sol` with `euint64` hidden balance, `FHE.gte` solvency gates, weighted voting via `FHE.mul`
-- **Wave 4: Delegation** — encrypted vote delegation via `ShadowDelegate.sol`, on-chain discussion, analytics dashboard
-- **Wave 5: SDK + gasless** — `@shadowdao/sdk` npm package, EIP-712 meta-tx relay, multi-chain, PWA
+- **Wave 3** — encrypted treasury (`euint64`), weighted voting (`FHE.mul`), IPFS descriptions
+- **Wave 4** — encrypted delegation (`ShadowDelegate.sol`), on-chain discussion, analytics dashboard, proposal templates
+- **Wave 5** — `@shadowdao/sdk` npm package, gasless voting (EIP-712 meta-tx), multi-chain, PWA
 - **Mainnet** — when CoFHE launches on mainnet, ShadowDAO goes with it
 
 ---
