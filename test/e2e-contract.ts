@@ -35,7 +35,7 @@ if (!PRIVATE_KEY) {
 
 const RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://rpc.ankr.com/eth_sepolia';
 const VOTE_CONTRACT = '0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5';
-const SPACE_CONTRACT = '0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5';
+const SPACE_CONTRACT = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88';
 
 const VOTE_ABI = parseAbi([
   'function createProposal(string _title, uint8 _optionCount, uint256 _deadline, uint256 _quorum) returns (uint256)',

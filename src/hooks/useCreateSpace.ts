@@ -77,6 +77,46 @@ export function useCreateSpace() {
     [writeContractAsync, publicClient]
   );
 
+  const leaveSpace = useCallback(
+    async (spaceId: bigint) => {
+      try {
+        setError(null);
+        const hash = await writeContractAsync({
+          address: SHADOWSPACE_ADDRESS,
+          abi: SHADOWSPACE_ABI,
+          functionName: 'leaveSpace',
+          args: [spaceId],
+        } as any);
+        await publicClient!.waitForTransactionReceipt({ hash });
+        return true;
+      } catch (err: any) {
+        setError(err.shortMessage || err.message || 'Leave failed');
+        return false;
+      }
+    },
+    [writeContractAsync, publicClient]
+  );
+
+  const archiveSpace = useCallback(
+    async (spaceId: bigint) => {
+      try {
+        setError(null);
+        const hash = await writeContractAsync({
+          address: SHADOWSPACE_ADDRESS,
+          abi: SHADOWSPACE_ABI,
+          functionName: 'archiveSpace',
+          args: [spaceId],
+        } as any);
+        await publicClient!.waitForTransactionReceipt({ hash });
+        return true;
+      } catch (err: any) {
+        setError(err.shortMessage || err.message || 'Archive failed');
+        return false;
+      }
+    },
+    [writeContractAsync, publicClient]
+  );
+
   const reset = useCallback(() => {
     setDeployState('idle');
     setTxHash(null);
@@ -84,5 +124,5 @@ export function useCreateSpace() {
     setError(null);
   }, []);
 
-  return { createSpace, joinSpace, deployState, txHash, spaceId, error, reset };
+  return { createSpace, joinSpace, leaveSpace, archiveSpace, deployState, txHash, spaceId, error, reset };
 }

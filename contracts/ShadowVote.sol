@@ -81,10 +81,15 @@ contract ShadowVote {
             ebool isMatch = FHE.eq(option, FHE.asEuint32(i));
             euint32 increment = FHE.select(isMatch, FHE.asEuint32(1), FHE.asEuint32(0));
             tallies[_proposalId][i] = FHE.add(tallies[_proposalId][i], increment);
+            // Least-privilege: only this contract may use the tally handle.
+            // Individual option counts are never exposed; only the aggregate
+            // is made public via allowPublic() after the deadline.
             FHE.allowThis(tallies[_proposalId][i]);
         }
 
-        // Store encrypted vote for self-verification (permit-gated)
+        // Store encrypted vote for self-verification (permit-gated).
+        // allowSender grants only the voter — no other account or contract
+        // can decrypt this via decryptForView even with a valid permit.
         userEncryptedVotes[_proposalId][msg.sender] = option;
         FHE.allowSender(userEncryptedVotes[_proposalId][msg.sender]);
 
@@ -102,6 +107,9 @@ contract ShadowVote {
         require(!proposal.revealed, "Already revealed");
 
         for (uint8 i = 0; i < proposal.optionCount; i++) {
+            // allowPublic is the final ACL promotion: after deadline + quorum,
+            // any wallet may decrypt aggregate tallies via decryptForView with
+            // any valid permit. Individual ballots remain under allowSender only.
             FHE.allowPublic(tallies[_proposalId][i]);
         }
 
@@ -112,25 +120,38 @@ contract ShadowVote {
     /// @notice Check if quorum is met using FHE comparison (encrypted quorum validation)
     /// @dev Uses FHE.gte() to compare encrypted vote count against quorum threshold
     ///      without revealing the actual number of votes. Result is an encrypted boolean.
+    ///      ACL: allowThis on each intermediate sum so the contract retains access
+    ///      across the accumulation loop; allowSender on the final result so the
+    ///      caller can decrypt the boolean via decryptForView with their permit.
     function checkQuorumEncrypted(uint256 _proposalId) external returns (ebool) {
         Proposal storage proposal = proposals[_proposalId];
         require(proposal.optionCount > 0, "Proposal does not exist");
 
-        // Sum all encrypted tallies to get total encrypted vote count
+        // Sum all encrypted tallies to get total encrypted vote count.
+        // allowThis on each intermediate so the contract holds access across iterations.
         euint32 totalEncrypted = tallies[_proposalId][0];
         for (uint8 i = 1; i < proposal.optionCount; i++) {
             totalEncrypted = FHE.add(totalEncrypted, tallies[_proposalId][i]);
+            FHE.allowThis(totalEncrypted);
         }
 
         // FHE.gte: encrypted comparison — is totalVotes >= quorum?
-        // Neither value is revealed; result is an encrypted boolean
+        // Neither value is revealed; result is an encrypted boolean.
         euint32 quorumEncrypted = FHE.asEuint32(uint32(proposal.quorum));
-        return FHE.gte(totalEncrypted, quorumEncrypted);
+        ebool result = FHE.gte(totalEncrypted, quorumEncrypted);
+        // Grant the caller permission to decrypt the result via decryptForView.
+        // Does not reveal the total vote count — only whether quorum was reached.
+        FHE.allowSender(result);
+        return result;
     }
 
     /// @notice Find the maximum encrypted tally across all options (private winner detection)
     /// @dev Uses FHE.max() to determine the highest vote count without revealing any tallies.
-    ///      The returned euint32 handle can only be decrypted after FHE.allowPublic().
+    ///      ACL: allowThis on each intermediate max so the contract retains access;
+    ///      allowSender so the caller can decrypt the winning tally via decryptForView.
+    ///      Note: the returned value is only meaningful after revealResults() has been
+    ///      called, because individual tally handles require allowPublic() to be decryptable
+    ///      by anyone. The max handle itself is granted to the sender only.
     function getEncryptedMaxTally(uint256 _proposalId) external returns (euint32) {
         Proposal storage proposal = proposals[_proposalId];
         require(proposal.optionCount > 0, "Proposal does not exist");
@@ -138,13 +159,19 @@ contract ShadowVote {
         euint32 maxTally = tallies[_proposalId][0];
         for (uint8 i = 1; i < proposal.optionCount; i++) {
             maxTally = FHE.max(maxTally, tallies[_proposalId][i]);
+            // allowThis retains contract access to the running maximum across iterations.
+            FHE.allowThis(maxTally);
         }
+        // allowSender: caller may decrypt the winning tally count via decryptForView.
+        FHE.allowSender(maxTally);
         return maxTally;
     }
 
     /// @notice Compute encrypted vote differential between two options
     /// @dev Uses FHE.sub() to calculate the difference between two option tallies
     ///      without revealing either value. Useful for margin-of-victory analysis.
+    ///      ACL: allowSender grants only the caller permission to decrypt the result;
+    ///      no allowPublic is set, so no other party sees the margin without consent.
     function getEncryptedDifferential(
         uint256 _proposalId,
         uint8 _optionA,
@@ -153,8 +180,11 @@ contract ShadowVote {
         Proposal storage proposal = proposals[_proposalId];
         require(_optionA < proposal.optionCount && _optionB < proposal.optionCount, "Invalid option");
 
-        // FHE.sub: encrypted subtraction — difference without revealing counts
-        return FHE.sub(tallies[_proposalId][_optionA], tallies[_proposalId][_optionB]);
+        // FHE.sub: encrypted subtraction — difference without revealing either count.
+        euint32 diff = FHE.sub(tallies[_proposalId][_optionA], tallies[_proposalId][_optionB]);
+        // allowSender: only the caller may decrypt this margin via decryptForView.
+        FHE.allowSender(diff);
+        return diff;
     }
 
     function cancelProposal(uint256 _proposalId) external {

@@ -1,7 +1,7 @@
 // Update this address after deploying ShadowVote.sol to Sepolia
 export const SHADOWVOTE_ADDRESS = '0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5' as const;
 
-export const SHADOWSPACE_ADDRESS = '0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5' as const;
+export const SHADOWSPACE_ADDRESS = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88' as const;
 
 export const ETHERSCAN_BASE = 'https://sepolia.etherscan.io';
 export const etherscanTx = (hash: string) => `${ETHERSCAN_BASE}/tx/${hash}`;
@@ -89,10 +89,39 @@ export const SHADOWSPACE_ABI = [
     ],
   },
   {
+    name: 'leaveSpace', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [],
+  },
+  {
+    name: 'archiveSpace', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_spaceId', type: 'uint256' as const }],
+    outputs: [],
+  },
+  {
+    name: 'setShadowVoteContract', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_shadowVote', type: 'address' as const }],
+    outputs: [],
+  },
+  {
     name: 'MemberJoined', type: 'event' as const,
     inputs: [
       { name: 'spaceId', type: 'uint256' as const, indexed: true },
       { name: 'member', type: 'address' as const, indexed: true },
+    ],
+  },
+  {
+    name: 'MemberRemoved', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'member', type: 'address' as const, indexed: true },
+    ],
+  },
+  {
+    name: 'SpaceArchived', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'creator', type: 'address' as const, indexed: true },
     ],
   },
 ] as const;

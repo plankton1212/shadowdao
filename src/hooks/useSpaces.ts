@@ -110,9 +110,28 @@ export function useSpaces() {
     [publicClient]
   );
 
+  const getUserSpaceIds = useCallback(
+    async (userAddress?: string): Promise<bigint[]> => {
+      if (!publicClient) return [];
+      const target = userAddress || address;
+      if (!target) return [];
+      try {
+        return (await publicClient.readContract({
+          address: SHADOWSPACE_ADDRESS,
+          abi: SHADOWSPACE_ABI,
+          functionName: 'getUserSpaces',
+          args: [target as `0x${string}`],
+        } as any)) as bigint[];
+      } catch {
+        return [];
+      }
+    },
+    [publicClient, address]
+  );
+
   useEffect(() => {
     fetchSpaces();
   }, [fetchSpaces]);
 
-  return { spaces, loading, error, refetch: fetchSpaces, checkIsMember, getMembers };
+  return { spaces, loading, error, refetch: fetchSpaces, checkIsMember, getMembers, getUserSpaceIds };
 }

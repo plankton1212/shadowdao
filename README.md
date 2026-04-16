@@ -24,6 +24,8 @@ The flow is simple: pick an option → CoFHE SDK encrypts it as `euint32` → ZK
 
 And if you're paranoid (fair), there's a "Verify My Vote" button. It uses `FHE.allowSender` so only *you* can decrypt *your own* ballot. Nobody else.
 
+**Wave 2 features are live:** full Spaces navigation (My Spaces / Explore tabs), Leave Space + Archive Space, personal Dashboard stats, FHE step visualizer during voting, confetti on vote success, and ShadowSpace.sol upgraded with ACL fixes and lifecycle management.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     VOTE LIFECYCLE                               │
@@ -94,7 +96,7 @@ ShadowDAO is different because individual votes are never decrypted. Not after t
 
 **Permit system quirks.** CoFHE requires an active EIP-712 permit before `decryptForView` works. If you call decrypt without first calling `getOrCreateSelfPermit`, you get a cryptic "Active permit not found" error. Not documented anywhere — had to read the SDK source to figure it out.
 
-**ShadowSpace isn't wired to ShadowVote yet.** The DAO registry contract and the voting contract are deployed separately. Right now any wallet can vote on any proposal — space-gated voting (only members vote) is planned but not shipped.
+**ShadowSpace ACL for incrementProposalCount.** In Wave 1, any address could call `incrementProposalCount` on ShadowSpace. Wave 2 fixes this with `setShadowVoteContract()` — only the registered ShadowVote contract address can call it. Required a constructor + `owner` pattern and a migration to the upgraded contract.
 
 ---
 
@@ -157,13 +159,15 @@ Added three more FHE operations for on-chain analytics without revealing raw dat
 
 ### Phase 5 — DAO Spaces
 
-Built ShadowSpace.sol as a second contract — on-chain DAO registry. 8 crypto-specific categories (DeFi, NFT, Infrastructure, Gaming, Social, Privacy, L2/Scaling, DAO Tooling). Create a Space, add members, set default quorum. It's independent from voting right now, but the architecture is there to gate proposals by Space membership.
+Built ShadowSpace.sol as a second contract — on-chain DAO registry. 8 crypto-specific categories (DeFi, NFT, Infrastructure, Gaming, Social, Privacy, L2/Scaling, DAO Tooling). Create a Space, add members, set default quorum. Wave 2 upgraded the contract with `leaveSpace`, `archiveSpace`, `setShadowVoteContract` ACL, fixed `removeMember` to clean up the memberLists array, and added the `SpaceArchived` event.
 
 ### Phase 6 — Frontend
 
 14 pages, all reading from chain through wagmi's `readContract`. No backend, no database, no localStorage for any governance data.
 
 The CoFHE SDK integration lives in `useCofhe.ts` — handles initialization with fallback (WagmiAdapter → direct connect → retry without workers). `useVote.ts` does the encryption: `Encryptable.uint32(optionIndex)` → `encryptInputs` → `{ctHash, securityZone, utype, signature}` tuple → `writeContract`. `useReveal.ts` handles permit creation + batch decryption of all option tallies.
+
+Wave 2 added: FHE step visualizer with FheBadge labels during the voting flow, confetti animation on vote success, personal stats widgets in the Dashboard (My Votes Cast, My Spaces count), My Spaces sidebar widget, Spaces tab in main nav, My Spaces / Explore sub-tabs in the Spaces page, Leave Space + Archive Space buttons in SpaceDetail, CategoryEmoji component for Space icons, and MobileTabBar expanded to 5 tabs.
 
 ---
 
@@ -183,7 +187,7 @@ The CoFHE SDK integration lives in `useCofhe.ts` — handles initialization with
 - Creating proposals (title and options are public metadata)
 - Reading proposal metadata (deadline, quorum, voter count)
 - Checking `hasUserVoted` (public boolean — proves participation, not choice)
-- DAO Space creation, joining, member management
+- DAO Space creation, joining, leaving, archiving, member management
 
 ---
 
@@ -279,11 +283,11 @@ The permit system is also something we didn't anticipate. Every `decryptForView`
 
 **1. Connect** — MetaMask on Sepolia. Wrong network detection with auto-switch prompt.
 
-**2. Dashboard** — Active proposals loaded from chain via `getProposalCount()` + `getProposal(i)` loop. Live notification bell with VoteCast/ProposalCreated/ResultsRevealed events from `getLogs`.
+**2. Dashboard** — Active proposals loaded from chain via `getProposalCount()` + `getProposal(i)` loop. Live notification bell with VoteCast/ProposalCreated/ResultsRevealed events from `getLogs`. Personal stats: My Votes Cast, My Spaces count. My Spaces sidebar widget shows your DAOs at a glance.
 
 **3. Create** — 4-step wizard. Step 1: title + description. Step 2: add options (with templates — "Yes/No", "Approve/Reject/Abstain"). Step 3: pick duration (presets: 10 min to 30 days, or custom date picker) + set quorum. Step 4: review + deploy. After MetaMask confirms, we parse the `ProposalCreated` event for the proposalId and generate a shareable voting link.
 
-**4. Vote** — Select option → "Encrypt & Submit" → 4-step progress: Initializing FHE engine → Encrypting ballot (~9 sec) → Submitting to Sepolia → Waiting for block confirmation. The encrypted tuple `{ctHash, securityZone, utype, signature}` is what goes on-chain — the option index is never transmitted in plaintext.
+**4. Vote** — Select option → "Encrypt & Submit" → FHE step visualizer shows each operation in sequence with FheBadge labels (asEuint32 → eq → select → add → allowSender). Progress: Initializing FHE engine → Encrypting ballot (~9 sec) → Submitting to Sepolia → Waiting for block confirmation. On success, confetti animation fires. The encrypted tuple `{ctHash, securityZone, utype, signature}` is what goes on-chain — the option index is never transmitted in plaintext.
 
 **5. Verify** — After voting, "Verify My Vote (FHE Decrypt)" button appears. Signs EIP-712 permit → calls `getMyVote()` → decrypts with `decryptForView` → shows "You voted: Option 1". Only visible to the voter.
 
@@ -291,17 +295,52 @@ The permit system is also something we didn't anticipate. Every `decryptForView`
 
 **7. Reveal** — After deadline + quorum, anyone clicks "Reveal Results" → `revealResults()` calls `FHE.allowPublic` on each tally → frontend decrypts with permit → animated bar charts with winner badge and "Verified on Sepolia" footer.
 
+**8. Spaces** — Spaces tab in nav (desktop + mobile). My Spaces tab shows DAOs you belong to. Explore tab shows all public Spaces. Inside SpaceDetail: Leave Space button for members, Archive Space button for the creator. Category icons via CategoryEmoji component.
+
 **All data from blockchain. No backend, no database, no localStorage for governance data.**
+
+---
+
+## Roadmap
+
+### ✅ Wave 1 — Core FHE Voting
+First working implementation: create proposal → encrypt vote in browser → cast on-chain → reveal aggregate results. `ShadowVote.sol` deployed with 10 FHE operations. `ShadowSpace.sol` deployed as DAO registry. Full voting UI with wallet connect, proposal lifecycle, and "Verify My Vote" via `FHE.allowSender`.
+
+### ✅ Wave 2 — Spaces + Lifecycle + UI Polish
+
+**The core upgrade: Spaces become fully functional DAOs, not just metadata records.**
+
+**ShadowSpace.sol redeployed** (`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`) with:
+- `leaveSpace()` — members can exit; creator is blocked and must archive instead
+- `archiveSpace()` — soft-delete by creator, sets `active = false` on-chain
+- `removeMember()` fix — now cleans the `memberLists[]` array via swap-and-pop, not just the mapping
+- ACL fix — `incrementProposalCount` restricted to ShadowVote contract via `setShadowVoteContract()` + `onlyOwner`
+
+**Frontend:**
+- Spaces page — Explore / My Spaces tabs, category filter with emoji pills, search, animated filter panel
+- SpaceDetail — join/leave/archive with confirmation modal, member list with remove (creator only), Etherscan links
+- Dashboard — real on-chain stats pulled in parallel: proposals created, votes cast, spaces joined
+- ProposalDetail — FHE step visualizer with `FheBadge` labels (`FHE.asEuint32`, `FHE.eq + FHE.select + FHE.add`, `FHE.allowSender`)
+- Confetti on vote success (48 particles, pure `motion/react`)
+- `CategoryEmoji` component — 8 category icons
+- Mobile bottom nav expanded to 5 tabs with labels and blur backdrop
+
+### 🔜 Wave 3 — Treasury + Weighted Voting
+`ShadowTreasury.sol`: encrypted balance (`euint64`), deposit/withdraw with `FHE.gte` solvency check, allocations linked to passed proposals. `ShadowVoteV2.sol`: weighted voting via `FHE.mul(vote, votingPower)`. FHE Operation Visualizer — animated diagram of encryption steps. Settings page with dark mode toggle.
+
+### 📋 Wave 4 — Delegation + Analytics
+`ShadowDelegate.sol`: delegate/undelegate voting power, vote-as-delegate, top-5 leaderboard. On-chain discussion threads via IPFS hash. Analytics dashboard — participation rate, quorum donut, voter heatmap. Full activity feed from contract event logs.
+
+### 🚀 Wave 5 — SDK + Gasless + Mainnet-ready
+`shadowdao-sdk` npm package with `ShadowVoteClient` + `ShadowSpaceClient`. EIP-712 meta-transactions for gasless voting. Multi-chain selector. PWA with offline fallback. Lighthouse ≥ 90. `TEMPLATE.md` — adapt to any contract in 30 minutes.
 
 ---
 
 ## What's next for ShadowDAO
 
-- **Token-gated voting** — bind proposals to ShadowSpace so only DAO members can vote
+- **Wave 3: Treasury + weighted voting** — `ShadowTreasury.sol` with `euint64` encrypted balance, `FHE.gte` solvency checks, and `FHE.mul`-based weighted ballots
 - **Encrypted delegation** — delegate your vote to another address using `FHE.allow(delegate)`, where the delegate casts your encrypted ballot without seeing it
-- **On-chain treasury** — `euint64` encrypted balance, deposit/withdraw with `FHE.add`/`FHE.sub`, solvency checks with `FHE.gte`
-- **Weighted voting** — `FHE.mul(vote, tokenBalance)` so voting power reflects stake
-- **Quadratic voting** — `FHE.square` for sqrt-weighted ballots that resist plutocracy
+- **Quadratic voting** — sqrt-weighted ballots that resist plutocracy
 - **Mainnet** — when CoFHE launches on mainnet, ShadowDAO goes with it
 
 ---
@@ -311,7 +350,7 @@ The permit system is also something we didn't anticipate. Every `decryptForView`
 | Contract | Address | FHE Operations |
 |----------|---------|----------------|
 | ShadowVote.sol | [`0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5`](https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5) | asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender |
-| ShadowSpace.sol | [`0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5`](https://sepolia.etherscan.io/address/0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5) | — (DAO registry, no FHE) |
+| ShadowSpace.sol (Wave 2 upgrade) | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | — (DAO registry, no FHE) |
 
 Ethereum Sepolia · Chain ID 11155111 · Solidity 0.8.25 · EVM Cancun
 
@@ -334,11 +373,15 @@ Ethereum Sepolia · Chain ID 11155111 · Solidity 0.8.25 · EVM Cancun
 
 | Function | What it does |
 |----------|-------------|
+| `constructor(owner)` | Deploys contract with designated owner |
 | `createSpace(name, description, category, isPublic, defaultQuorum, initialMembers)` | Deploy on-chain DAO with metadata |
 | `joinSpace(spaceId)` | Join public Space |
-| `addMember(spaceId, member)` / `removeMember(spaceId, member)` | Creator manages membership |
+| `leaveSpace(spaceId)` | Member voluntarily leaves a Space; cleans up memberLists array |
+| `archiveSpace(spaceId)` | Creator archives a Space; emits `SpaceArchived`; prevents new joins |
+| `addMember(spaceId, member)` / `removeMember(spaceId, member)` | Creator manages membership; `removeMember` cleans up memberLists array |
+| `setShadowVoteContract(addr)` | Owner sets the only address allowed to call `incrementProposalCount` (ACL fix) |
 | `updateSpace(spaceId, name, description)` | Creator edits Space info |
-| `getSpace`, `getSpaceCount`, `isMember`, `getMembers` | Read-only views |
+| `getSpace`, `getSpaceCount`, `isMember`, `getMembers`, `getUserSpaceIds` | Read-only views |
 
 ---
 
@@ -360,7 +403,7 @@ Node.js 18+, MetaMask on Sepolia with test ETH ([faucet](https://www.alchemy.com
 npm run test:live
 ```
 
-Tests cover: proposal creation, voting, reveal, cancel, extend deadline, quorum checks, double-vote prevention, Space creation/join/update, and cross-account authorization.
+Tests cover: proposal creation, voting, reveal, cancel, extend deadline, quorum checks, double-vote prevention, Space creation/join/leave/archive/update, and cross-account authorization.
 
 ---
 

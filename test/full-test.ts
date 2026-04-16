@@ -22,7 +22,7 @@ if (!KEY1 || !KEY2) {
 
 const RPC = process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
 const VOTE = '0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5';
-const SPACE = '0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5';
+const SPACE = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88';
 
 const VOTE_ABI = parseAbi([
   'function createProposal(string _title, uint8 _optionCount, uint256 _deadline, uint256 _quorum) returns (uint256)',

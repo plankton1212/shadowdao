@@ -246,7 +246,7 @@ export const Home = () => {
       <Section className="bg-white/50 border-y border-black/5 py-14">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
           {[
-            { val: 8, suffix: '', label: 'FHE Operations', prefix: '' },
+            { val: 10, suffix: '', label: 'FHE Operations', prefix: '' },
             { val: 2, suffix: '', label: 'Smart Contracts', prefix: '' },
             { val: 100, suffix: '%', label: 'Ballot Privacy', prefix: '' },
             { val: 0, suffix: '', label: 'Votes Exposed', prefix: '' },
@@ -538,10 +538,10 @@ export const Home = () => {
 
           <StaggerContainer className="grid md:grid-cols-4 gap-8">
             {[
-              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted voting, DAO spaces, permits, admin controls.' },
-              { phase: 'Wave 2', title: 'Spaces', status: 'Next', desc: 'Member-only voting, proposal templates, search.' },
-              { phase: 'Wave 3', title: 'Treasury', status: 'Planned', desc: 'Encrypted balance (euint64), weighted voting (FHE.mul).' },
-              { phase: 'Wave 4-5', title: 'Production', status: 'Planned', desc: 'Multi-chain, delegation, gasless voting, SDK.' },
+              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted voting, DAO spaces, permits, admin controls. 10 FHE operations.' },
+              { phase: 'Wave 2', title: 'Spaces', status: 'Live', desc: 'My Spaces dashboard, leave/archive, FHE step visualizer, Explore tabs.' },
+              { phase: 'Wave 3', title: 'Treasury', status: 'Next', desc: 'Encrypted balance (euint64), weighted voting (FHE.mul), solvency checks.' },
+              { phase: 'Wave 4-5', title: 'Production', status: 'Planned', desc: 'Delegation, analytics, gasless voting, SDK, multi-chain.' },
             ].map((item, i) => (
               <StaggerItem key={i}>
                 <div className="space-y-4 relative">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutGrid,
@@ -236,6 +236,7 @@ export const CountUp = ({ end, duration = 1.5, suffix = '' }: { end: number; dur
 
 // Module-level flag — resets on full page reload, persists across navigations
 let hasPreloaded = false;
+const isLandingPage = () => window.location.pathname === '/' || window.location.pathname === '';
 
 // SVG paths from logo, split into groups for staggered assembly
 const LOGO_PATHS = [
@@ -303,6 +304,7 @@ export const HashScramble = ({ text, className }: { text: string; className?: st
 export const Preloader = () => {
   const [show, setShow] = useState(() => {
     if (hasPreloaded) return false;
+    if (!isLandingPage()) return false;
     hasPreloaded = true;
     return true;
   });
@@ -737,7 +739,7 @@ export const AppTopBar = () => {
     { name: 'Dashboard', path: '/app/dashboard', icon: LayoutGrid },
     { name: 'Proposals', path: '/app/proposals', icon: List },
     { name: 'Create', path: '/app/create', icon: PlusCircle, highlight: true },
-    { name: 'Spaces', path: '', icon: Users, disabled: true },
+    { name: 'Spaces', path: '/app/spaces', icon: Users },
     { name: 'Treasury', path: '/app/treasury', icon: Database },
     { name: 'Delegation', path: '/app/delegation', icon: UserCheck },
     { name: 'Analytics', path: '/app/analytics', icon: BarChart3 },
@@ -823,27 +825,33 @@ export const AppTopBar = () => {
 export const MobileTabBar = () => {
   const location = useLocation();
   const tabs = [
-    { path: '/app/dashboard', icon: LayoutGrid },
-    { path: '/app/proposals', icon: List },
-    { path: '/app/create', icon: PlusCircle },
-    { path: '/app/settings', icon: SettingsIcon },
+    { path: '/app/dashboard', icon: LayoutGrid, label: 'Home' },
+    { path: '/app/proposals', icon: List, label: 'Votes' },
+    { path: '/app/create', icon: PlusCircle, label: 'Create', highlight: true },
+    { path: '/app/spaces', icon: Users, label: 'Spaces' },
+    { path: '/app/settings', icon: SettingsIcon, label: 'Settings' },
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 px-6 py-3 flex justify-between items-center z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-black/5 px-2 py-2 flex justify-around items-center z-50 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
       {tabs.map((tab) => {
-        const isActive = location.pathname === tab.path;
+        const isActive = location.pathname === tab.path || location.pathname.startsWith(tab.path + '/');
         const Icon = tab.icon;
         return (
           <Link
             key={tab.path}
             to={tab.path}
             className={cn(
-              'p-2 rounded-xl transition-colors',
-              isActive ? 'text-primary-accent bg-surface-highlight' : 'text-text-muted'
+              'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-2xl transition-all duration-200',
+              (tab as any).highlight
+                ? 'bg-primary-accent text-white shadow-button'
+                : isActive
+                  ? 'text-primary-accent bg-surface-highlight'
+                  : 'text-text-muted hover:text-text-primary'
             )}
           >
-            <Icon className="w-6 h-6" />
+            <Icon className="w-5 h-5" />
+            <span className="text-[9px] font-bold uppercase tracking-wider">{tab.label}</span>
           </Link>
         );
       })}
@@ -870,4 +878,90 @@ export const AppLayout = ({ children }: { children: React.ReactNode }) => (
     <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
     <MobileTabBar />
   </div>
+);
+
+/* ─────────────────────────── Confetti ─────────────────────────── */
+
+const CONFETTI_COLORS = ['#D4F542', '#34CC99', '#5B6DEC', '#FF6B6B', '#FFE066', '#FF9F1C', '#2EC4B6', '#A78BFA'];
+
+export const Confetti = ({ active, onDone }: { active: boolean; onDone?: () => void }) => {
+  const particles = useMemo(() => Array.from({ length: 48 }, (_, i) => ({
+    id: i,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    startX: 20 + Math.random() * 60,       // vw — spread across middle 60%
+    driftX: (Math.random() - 0.5) * 30,    // vw horizontal drift
+    duration: 1.4 + Math.random() * 0.9,
+    delay: Math.random() * 0.5,
+    rotation: Math.random() * 800 - 400,
+    size: Math.random() * 7 + 5,
+    shape: i % 3,                           // 0=square 1=circle 2=rect
+  })), []);
+
+  if (!active) return null;
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9998] overflow-hidden">
+      {particles.map((p, idx) => (
+        <motion.div
+          key={p.id}
+          className={cn(
+            'absolute',
+            p.shape === 1 ? 'rounded-full' : p.shape === 2 ? 'rounded-sm' : 'rounded'
+          )}
+          style={{
+            backgroundColor: p.color,
+            width: p.shape === 2 ? p.size * 2 : p.size,
+            height: p.size,
+            left: `${p.startX}vw`,
+            top: '45vh',
+          }}
+          initial={{ y: 0, x: 0, opacity: 1, scale: 1, rotate: 0 }}
+          animate={{
+            y: ['0vh', '90vh'],
+            x: [`0vw`, `${p.driftX}vw`],
+            opacity: [1, 1, 0.6, 0],
+            scale: [1, 1.3, 0.7, 0.2],
+            rotate: p.rotation,
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            ease: [0.22, 0, 0.58, 1],
+          }}
+          onAnimationComplete={idx === 0 ? onDone : undefined}
+        />
+      ))}
+    </div>
+  );
+};
+
+/* ─────────────────────────── SpaceCategoryIcon ─────────────────────────── */
+
+const CATEGORY_EMOJIS: Record<string, string> = {
+  DeFi: '💰',
+  NFT: '🎨',
+  Infrastructure: '⚙️',
+  Gaming: '🎮',
+  Privacy: '🔒',
+  L2: '⚡',
+  'DAO Tooling': '🛠️',
+  Social: '👥',
+};
+
+export const CategoryEmoji = ({ label, className }: { label: string; className?: string }) => (
+  <span className={cn('text-xl select-none', className)} role="img" aria-label={label}>
+    {CATEGORY_EMOJIS[label] ?? '🌐'}
+  </span>
+);
+
+/* ─────────────────────────── FheBadge ─────────────────────────── */
+
+export const FheBadge = ({ op, className }: { op: string; className?: string }) => (
+  <span className={cn(
+    'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold',
+    'bg-secondary-accent/90 text-primary-accent border border-primary-accent/20',
+    className
+  )}>
+    🔐 {op}
+  </span>
 );

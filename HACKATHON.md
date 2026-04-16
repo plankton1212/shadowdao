@@ -1,4 +1,4 @@
-# ShadowDAO — Hackathon Submission (Wave 1: Ideathon)
+# ShadowDAO — Hackathon Submission (Wave 2: Build)
 
 ## One-Line Description
 
@@ -81,9 +81,9 @@ These are **impossible** without FHE — there is no plaintext fallback:
 
 ---
 
-## Deep Fhenix Integration — 9 FHE Operations
+## Deep Fhenix Integration — 10 FHE Operations
 
-ShadowDAO uses **9 distinct FHE operations** — one of the deepest Fhenix integrations in any project:
+ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix integrations in any project:
 
 | # | Operation | Function | Purpose |
 |---|-----------|----------|---------|
@@ -122,18 +122,23 @@ ShadowDAO uses **9 distinct FHE operations** — one of the deepest Fhenix integ
 | **Encrypted Quorum Check** | Validate quorum without revealing vote count | `FHE.gte` |
 | **Private Winner Detection** | Find winning option without revealing any tallies | `FHE.max` |
 | **Encrypted Vote Differential** | Compute margin of victory on encrypted data | `FHE.sub` |
-| **DAO Spaces** | On-chain DAO registry with members, categories | ShadowSpace.sol |
+| **DAO Spaces** | On-chain DAO registry with members, categories, lifecycle | ShadowSpace.sol |
+| **Spaces Navigation** | My Spaces / Explore tabs; Spaces in main nav and MobileTabBar (5 tabs) | — |
+| **Leave / Archive Space** | Members can leave; creator can archive; full array cleanup on-chain | ShadowSpace.sol `leaveSpace`, `archiveSpace` |
+| **Personal Dashboard Stats** | My Votes Cast, My Spaces count, My Spaces sidebar widget | `getUserVotes`, `getUserSpaceIds` |
+| **Confetti Vote Confirmation** | Animated confetti fires on successful vote transaction | — |
+| **FHE Step Visualizer** | Live per-operation progress with FheBadge labels during voting flow | `asEuint32 → eq → select → add → allowSender` |
 | **Creator Admin Controls** | Cancel (pre-vote), extend deadline | On-chain access control |
 | **Real-Time Notifications** | Live event feed from blockchain | `getLogs` for events |
 | **Live Countdown Timer** | Real-time HH:MM:SS on active proposals | — |
 | **Proposal Templates** | Yes/No, Approve/Reject/Abstain, Multiple Choice | — |
 | **Export Results** | Download JSON/CSV after reveal | — |
 
-### Planned (Waves 2-5)
+### Planned (Waves 3-5)
 
 | Wave | Feature | Fhenix FHE |
 |------|---------|------------|
-| 2 | Member-only voting in Spaces | `FHE.and`, `FHE.or` for role checks |
+| 2 | Member-only voting in Spaces | *(completed — `setShadowVoteContract` ACL)* |
 | 3 | Weighted voting (token balance = power) | `FHE.mul(vote, weight)` |
 | 3 | Encrypted treasury balance | `euint64`, `FHE.gte` solvency check |
 | 4 | Encrypted delegation | `FHE.allow(delegate_address)` |
@@ -151,7 +156,7 @@ ShadowDAO uses **9 distinct FHE operations** — one of the deepest Fhenix integ
 | **FHE SDK** | @cofhe/sdk 0.4.0 | Browser-side encryption, ZK proofs, permits |
 | **FHE Contracts** | @fhenixprotocol/cofhe-contracts 0.1.0 | Solidity FHE types (euint32, ebool, InEuint32) |
 | **Smart Contracts** | Solidity 0.8.25 (EVM: Cancun) | On-chain governance logic |
-| **Frontend** | React 19 + TypeScript + Vite 6 | Modern SPA with 11 pages |
+| **Frontend** | React 19 + TypeScript + Vite 6 | Modern SPA with 14 pages |
 | **Styling** | Tailwind CSS 4 + Motion 12 | Animations, skeleton loading |
 | **Wallet** | wagmi 3 + viem 2 | MetaMask, Sepolia enforcement |
 | **Build** | Hardhat + @cofhe/hardhat-plugin | Compile + deploy FHE contracts |
@@ -164,20 +169,21 @@ ShadowDAO uses **9 distinct FHE operations** — one of the deepest Fhenix integ
 
 | Contract | Address | FHE Operations |
 |----------|---------|---------------|
-| **ShadowVote.sol** | [`0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5`](https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5) | 9 FHE ops (asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender) |
-| **ShadowSpace.sol** | [`0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5`](https://sepolia.etherscan.io/address/0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5) | DAO registry (no FHE — membership is public) |
+| **ShadowVote.sol** | [`0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5`](https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5) | 10 FHE ops (asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender) |
+| **ShadowSpace.sol** *(Wave 2 upgrade)* | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | DAO registry (no FHE — membership is public) |
 
 ---
 
 ## Expected User Experience
 
 1. **Connect** — MetaMask on Sepolia
-2. **Browse** — Dashboard shows active proposals from blockchain, skeleton loading, live notifications
+2. **Dashboard** — Active proposals from blockchain, skeleton loading, live notifications. Personal stats: My Votes Cast and My Spaces count. My Spaces sidebar widget.
 3. **Create** — 4-step wizard: title → options (with templates) → duration/quorum → deploy on-chain
-4. **Vote** — Select option → "Encrypt & Submit" → FHE encryption (~9 sec) → ZK proof → on-chain. Progress: Initializing → Encrypting → Submitting → Confirming
+4. **Vote** — Select option → "Encrypt & Submit" → FHE step visualizer shows each operation with FheBadge labels (asEuint32 → eq → select → add → allowSender) → ZK proof → on-chain. Confetti on success.
 5. **Verify** — "Verify My Vote" button → EIP-712 permit → decrypt own ballot → "You voted: Option 1" (only visible to voter)
 6. **Wait** — Live countdown timer. No intermediate results visible to anyone
 7. **Reveal** — After deadline + quorum → "Reveal Results" → `FHE.allowPublic()` → animated bar charts → winner badge → export JSON/CSV
+8. **Spaces** — My Spaces tab (your DAOs) and Explore tab (all public Spaces). Leave Space or Archive Space from SpaceDetail. CategoryEmoji icons per Space type.
 
 **All data from blockchain. No backend, no database, no localStorage.**
 
@@ -194,7 +200,7 @@ ShadowDAO uses **9 distinct FHE operations** — one of the deepest Fhenix integ
 | After reveal | All individual votes public | **Only aggregates public, votes stay encrypted forever** |
 | Quorum check | Count public votes | **FHE.gte on encrypted total** |
 | Winner detection | Compare public counts | **FHE.max on encrypted tallies** |
-| FHE operations | 0 | **9 distinct operations** |
+| FHE operations | 0 | **10 distinct operations** |
 
 ---
 

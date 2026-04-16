@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// @title ShadowSpace — on-chain DAO registry for ShadowDAO
+/// @notice Stores Space metadata, membership, and proposal count.
+///         Membership is intentionally public — only ballots are FHE-encrypted.
+/// @dev Wave 2: added owner/ACL, leaveSpace, archiveSpace, memberList removal fix.
 contract ShadowSpace {
     enum Category { DeFi, NFT, Infrastructure, Gaming, Privacy, L2, DAOTooling, Social }
 
@@ -16,12 +20,20 @@ contract ShadowSpace {
         bool active;
     }
 
+    // --- Access control ---
+    address public owner;
+    /// @dev Set to the deployed ShadowVote contract address after both contracts are deployed.
+    ///      Until set (address(0)), any caller may call incrementProposalCount for backwards-compat.
+    address public shadowVoteContract;
+
+    // --- Storage ---
     mapping(uint256 => Space) public spaces;
     mapping(uint256 => mapping(address => bool)) public isMember;
     mapping(uint256 => address[]) private memberLists;
     mapping(address => uint256[]) private userSpaces;
     uint256 public spaceCount;
 
+    // --- Events ---
     event SpaceCreated(
         uint256 indexed spaceId,
         address indexed creator,
@@ -34,6 +46,29 @@ contract ShadowSpace {
     event MemberJoined(uint256 indexed spaceId, address indexed member);
     event MemberRemoved(uint256 indexed spaceId, address indexed member);
     event SpaceUpdated(uint256 indexed spaceId, string name, string description);
+    event SpaceArchived(uint256 indexed spaceId, address indexed creator);
+    event ShadowVoteContractUpdated(address indexed newAddress);
+
+    // --- Modifiers ---
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    // --- Admin ---
+
+    /// @notice Set the ShadowVote contract address so incrementProposalCount is properly gated.
+    function setShadowVoteContract(address _shadowVote) external onlyOwner {
+        require(_shadowVote != address(0), "Zero address");
+        shadowVoteContract = _shadowVote;
+        emit ShadowVoteContractUpdated(_shadowVote);
+    }
+
+    // --- Core space operations ---
 
     function createSpace(
         string calldata _name,
@@ -62,12 +97,10 @@ contract ShadowSpace {
             active: true
         });
 
-        // Creator is always a member
         isMember[spaceId][msg.sender] = true;
         memberLists[spaceId].push(msg.sender);
         userSpaces[msg.sender].push(spaceId);
 
-        // Add initial members
         for (uint256 i = 0; i < _initialMembers.length; i++) {
             address member = _initialMembers[i];
             if (member != msg.sender && member != address(0) && !isMember[spaceId][member]) {
@@ -97,6 +130,33 @@ contract ShadowSpace {
         emit MemberJoined(_spaceId, msg.sender);
     }
 
+    /// @notice Leave a space. Creator cannot leave — archive the space instead.
+    function leaveSpace(uint256 _spaceId) external {
+        Space storage space = spaces[_spaceId];
+        require(space.active, "Space does not exist");
+        require(isMember[_spaceId][msg.sender], "Not a member");
+        require(msg.sender != space.creator, "Creator cannot leave - archive the space instead");
+
+        isMember[_spaceId][msg.sender] = false;
+        space.memberCount--;
+
+        // Remove from memberLists (swap-and-pop, O(n))
+        _removeFromMemberList(_spaceId, msg.sender);
+
+        emit MemberRemoved(_spaceId, msg.sender);
+    }
+
+    /// @notice Archive (soft-delete) a space. Only the creator can archive.
+    function archiveSpace(uint256 _spaceId) external {
+        Space storage space = spaces[_spaceId];
+        require(msg.sender == space.creator, "Only creator can archive");
+        require(space.active, "Already archived");
+
+        space.active = false;
+
+        emit SpaceArchived(_spaceId, msg.sender);
+    }
+
     function addMember(uint256 _spaceId, address _member) external {
         Space storage space = spaces[_spaceId];
         require(msg.sender == space.creator, "Only creator can add members");
@@ -121,6 +181,9 @@ contract ShadowSpace {
         isMember[_spaceId][_member] = false;
         space.memberCount--;
 
+        // Wave 2 fix: also remove from memberLists array
+        _removeFromMemberList(_spaceId, _member);
+
         emit MemberRemoved(_spaceId, _member);
     }
 
@@ -135,17 +198,44 @@ contract ShadowSpace {
         emit SpaceUpdated(_spaceId, _name, _description);
     }
 
+    /// @notice Called by ShadowVote when a proposal is created in this space.
+    /// @dev Wave 2: restricted to shadowVoteContract. If not set yet (address(0)), still allows
+    ///      any caller for backwards-compatibility with deployments before the ACL was set.
     function incrementProposalCount(uint256 _spaceId) external {
-        // In production, only ShadowVote contract should call this
+        require(
+            shadowVoteContract == address(0) || msg.sender == shadowVoteContract,
+            "Only ShadowVote contract"
+        );
         spaces[_spaceId].proposalCount++;
     }
 
-    // View functions
+    // --- Internal helpers ---
+
+    function _removeFromMemberList(uint256 _spaceId, address _member) internal {
+        address[] storage list = memberLists[_spaceId];
+        uint256 len = list.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (list[i] == _member) {
+                list[i] = list[len - 1];
+                list.pop();
+                break;
+            }
+        }
+    }
+
+    // --- View functions ---
+
     function getSpace(uint256 _spaceId)
         external view returns (
-            address creator, string memory name, string memory description,
-            uint8 category, bool isPublic, uint256 defaultQuorum,
-            uint256 memberCount, uint256 proposalCount, bool active
+            address creator,
+            string memory name,
+            string memory description,
+            uint8 category,
+            bool isPublic,
+            uint256 defaultQuorum,
+            uint256 memberCount,
+            uint256 proposalCount,
+            bool active
         )
     {
         Space storage s = spaces[_spaceId];

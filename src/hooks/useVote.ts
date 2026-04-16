@@ -35,10 +35,15 @@ export function useVote() {
         const encrypted = await encrypt([Encryptable.uint32(BigInt(optionIndex))]);
         const encryptedVote = encrypted[0];
 
+        const rawCtHash = encryptedVote.ctHash ?? encryptedVote.data?.ctHash;
+        if (!rawCtHash) throw new Error('FHE encryption produced no ciphertext hash — ballot not submitted');
+        const rawUtype = encryptedVote.utype ?? encryptedVote.data?.utype;
+        if (rawUtype === undefined || rawUtype === null) throw new Error('FHE encryption produced no utype — ballot not submitted');
+
         const encTuple = {
-          ctHash: BigInt(encryptedVote.ctHash || encryptedVote.data?.ctHash || 0),
+          ctHash: BigInt(rawCtHash),
           securityZone: encryptedVote.securityZone ?? encryptedVote.data?.securityZone ?? 0,
-          utype: encryptedVote.utype ?? encryptedVote.data?.utype ?? 4,
+          utype: rawUtype,
           signature: (encryptedVote.signature ?? encryptedVote.data?.signature ?? '0x') as `0x${string}`,
         };
 

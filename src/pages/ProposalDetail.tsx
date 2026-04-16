@@ -19,7 +19,7 @@ import {
   Download,
 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar } from '../components/UI';
+import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar, Confetti, FheBadge } from '../components/UI';
 import { useAccount } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
 import { useVote } from '../hooks/useVote';
@@ -56,9 +56,9 @@ export const ProposalDetail = () => {
   const { address } = useAccount();
   const { proposals, loading, checkHasVoted, refetch } = useProposals();
   const { castVote, voteState, txHash, error: voteError, reset: resetVote } = useVote();
-  const { revealResults, fetchDecryptedResults, isRevealing, results, error: revealError } = useReveal();
+  const { revealResults, fetchDecryptedResults, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
-  const { verifyMyVote, verifiedOption, isVerifying, error: verifyError } = useVerifyVote();
+  const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError } = useVerifyVote();
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
@@ -66,6 +66,7 @@ export const ProposalDetail = () => {
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState('');
   const [isVoting, setIsVoting] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const proposalId = BigInt(id || '0');
   const proposal = proposals.find((p) => p.id === proposalId);
@@ -128,6 +129,7 @@ export const ProposalDetail = () => {
     setIsVoting(true);
     await castVote(proposalId, selectedOption);
     setHasVoted(true);
+    setShowConfetti(true);
     await refetch();
     setIsVoting(false);
   };
@@ -166,6 +168,7 @@ export const ProposalDetail = () => {
 
   return (
     <AppLayout>
+      <Confetti active={showConfetti} onDone={() => setShowConfetti(false)} />
       <PageWrapper>
         <div className="max-w-3xl mx-auto space-y-8">
           <button
@@ -357,48 +360,93 @@ export const ProposalDetail = () => {
             </Card>
           )}
 
-          {/* Voting Progress */}
+          {/* Voting Progress — FHE step visualizer */}
           {voteState !== 'idle' && voteState !== 'success' && voteState !== 'error' && (
             <Card hover={false} className="space-y-6">
-              <h3 className="text-xl font-bold">Submitting Encrypted Ballot</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Submitting Encrypted Ballot</h3>
+                <FheBadge op="Fhenix CoFHE" />
+              </div>
               <div className="space-y-4">
                 {[
-                  { id: 'initializing', label: 'Initializing FHE encryption...' },
-                  { id: 'encrypting', label: 'Encrypting your ballot...' },
-                  { id: 'submitting', label: 'Submitting to Sepolia...' },
-                  { id: 'confirming', label: 'Confirming on-chain...' },
-                ].map((step, i) => {
+                  {
+                    id: 'initializing',
+                    label: 'Initializing FHE engine',
+                    sub: 'CoFHE WASM worker + WagmiAdapter',
+                    fhe: null,
+                  },
+                  {
+                    id: 'encrypting',
+                    label: 'Encrypting your ballot',
+                    sub: 'Encryptable.uint32 → ZK proof generation',
+                    fhe: 'FHE.asEuint32',
+                  },
+                  {
+                    id: 'submitting',
+                    label: 'Submitting to Sepolia',
+                    sub: 'Broadcasting encrypted {ctHash, signature} tuple',
+                    fhe: 'FHE.eq + FHE.select + FHE.add',
+                  },
+                  {
+                    id: 'confirming',
+                    label: 'Confirming on-chain',
+                    sub: 'Waiting for block finality',
+                    fhe: 'FHE.allowSender',
+                  },
+                ].map((step) => {
                   const states = ['initializing', 'encrypting', 'submitting', 'confirming'];
                   const currentIdx = states.indexOf(voteState);
                   const stepIdx = states.indexOf(step.id);
                   const isDone = stepIdx < currentIdx;
                   const isActive = voteState === step.id;
                   return (
-                    <div key={step.id} className="flex items-center gap-4">
+                    <motion.div
+                      key={step.id}
+                      initial={{ opacity: 0.5 }}
+                      animate={{ opacity: isDone || isActive ? 1 : 0.4 }}
+                      className="flex items-start gap-4"
+                    >
                       <div
                         className={cn(
-                          'w-8 h-8 rounded-full flex items-center justify-center transition-colors',
+                          'w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 mt-0.5',
                           isDone
-                            ? 'bg-primary-accent text-white'
+                            ? 'bg-primary-accent text-white shadow-button'
                             : isActive
-                              ? 'bg-surface-highlight text-primary-accent'
+                              ? 'bg-surface-highlight text-primary-accent ring-2 ring-primary-accent/30'
                               : 'bg-bg-base text-text-muted'
                         )}
                       >
                         {isDone ? (
-                          <CheckCircle2 className="w-5 h-5" />
+                          <CheckCircle2 className="w-4 h-4" />
                         ) : isActive ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <div className="w-2 h-2 rounded-full bg-text-muted" />
                         )}
                       </div>
-                      <span className={cn('font-medium', isActive ? 'text-text-primary' : 'text-text-muted')}>
-                        {step.label}
-                      </span>
-                    </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={cn('font-semibold', isActive ? 'text-text-primary' : 'text-text-muted')}>
+                          {step.label}
+                        </div>
+                        {(isDone || isActive) && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-1 mt-1"
+                          >
+                            <div className="text-xs text-text-muted">{step.sub}</div>
+                            {step.fhe && <FheBadge op={step.fhe} className="text-[9px]" />}
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
                   );
                 })}
+              </div>
+              <div className="pt-2 border-t border-default">
+                <p className="text-[10px] text-text-muted flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Individual vote choice never leaves your browser in plaintext
+                </p>
               </div>
             </Card>
           )}
@@ -463,7 +511,7 @@ export const ProposalDetail = () => {
 
               <div className="pt-4 space-y-3">
                 <div className="flex items-center justify-center gap-2 text-sm text-text-secondary">
-                  <Lock className="w-4 h-4" /> Results hidden until deadline passes
+                  <Lock className="w-4 h-4" /> Results will be available after the deadline. Come back to reveal and see the outcome.
                 </div>
 
                 {/* Verify My Vote */}
@@ -495,7 +543,23 @@ export const ProposalDetail = () => {
                   </motion.div>
                 )}
                 {verifyError && (
-                  <p className="text-xs text-danger text-center">{verifyError}</p>
+                  verifyPermitError ? (
+                    <div className="p-3 bg-warning/10 border border-warning/30 rounded-xl space-y-2 text-left">
+                      <p className="text-xs text-warning font-medium">{verifyError}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => verifyMyVote(proposalId)}
+                        disabled={isVerifying}
+                        className="gap-2 text-warning border-warning/40 hover:bg-warning/10"
+                      >
+                        {isVerifying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                        Re-sign &amp; Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-danger text-center">{verifyError}</p>
+                  )
                 )}
               </div>
             </Card>
@@ -569,6 +633,21 @@ export const ProposalDetail = () => {
                       </div>
                     );
                   })}
+                </div>
+              ) : revealPermitError && revealError ? (
+                <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-warning flex-shrink-0" />
+                    <p className="text-sm text-warning font-medium">{revealError}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchDecryptedResults(proposalId, proposal.optionCount)}
+                    className="gap-2 text-warning border-warning/40 hover:bg-warning/10"
+                  >
+                    <Shield className="w-4 h-4" /> Re-sign &amp; Decrypt
+                  </Button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-8 gap-3 text-text-muted">

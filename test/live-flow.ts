@@ -248,7 +248,7 @@ async function main() {
   // ─── Step 10: ShadowSpace tests ───
   console.log('\n── Step 10: ShadowSpace — Create DAO ──');
 
-  const SPACE_ADDR = '0x136dB5145e9bD4F8DadCBA70BFa4BDE69a366EE5' as const;
+  const SPACE_ADDR = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88' as const;
   const SPACE_ABI = parseAbi([
     'function createSpace(string _name, string _description, uint8 _category, bool _isPublic, uint256 _defaultQuorum, address[] _initialMembers) returns (uint256)',
     'function joinSpace(uint256 _spaceId)',
