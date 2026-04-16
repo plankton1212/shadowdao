@@ -304,35 +304,103 @@ The permit system is also something we didn't anticipate. Every `decryptForView`
 ## Roadmap
 
 ### ✅ Wave 1 — Core FHE Voting
-First working implementation: create proposal → encrypt vote in browser → cast on-chain → reveal aggregate results. `ShadowVote.sol` deployed with 10 FHE operations. `ShadowSpace.sol` deployed as DAO registry. Full voting UI with wallet connect, proposal lifecycle, and "Verify My Vote" via `FHE.allowSender`.
 
-### ✅ Wave 2 — Spaces + Lifecycle + UI Polish
+**Smart contracts (2 deployed on Sepolia):**
+- [x] `ShadowVote.sol` — full encrypted vote lifecycle: create → cast → tally → reveal
+- [x] `ShadowSpace.sol` — on-chain DAO registry: create spaces, manage members, 8 categories
 
-**The core upgrade: Spaces become fully functional DAOs, not just metadata records.**
+**FHE operations (10):** `asEuint32`, `eq`, `select`, `add`, `gte`, `max`, `sub`, `allowThis`, `allowPublic`, `allowSender`
 
-**ShadowSpace.sol redeployed** (`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`) with:
-- `leaveSpace()` — members can exit; creator is blocked and must archive instead
-- `archiveSpace()` — soft-delete by creator, sets `active = false` on-chain
-- `removeMember()` fix — now cleans the `memberLists[]` array via swap-and-pop, not just the mapping
-- ACL fix — `incrementProposalCount` restricted to ShadowVote contract via `setShadowVoteContract()` + `onlyOwner`
+**App:** wallet connect, create proposal, cast FHE-encrypted vote, reveal aggregate results, "Verify My Vote" via `FHE.allowSender` + EIP-712 permit, cancel + extend deadline (admin), proposal list with live status
 
-**Frontend:**
-- Spaces page — Explore / My Spaces tabs, category filter with emoji pills, search, animated filter panel
-- SpaceDetail — join/leave/archive with confirmation modal, member list with remove (creator only), Etherscan links
-- Dashboard — real on-chain stats pulled in parallel: proposals created, votes cast, spaces joined
-- ProposalDetail — FHE step visualizer with `FheBadge` labels (`FHE.asEuint32`, `FHE.eq + FHE.select + FHE.add`, `FHE.allowSender`)
-- Confetti on vote success (48 particles, pure `motion/react`)
-- `CategoryEmoji` component — 8 category icons
-- Mobile bottom nav expanded to 5 tabs with labels and blur backdrop
+---
 
-### 🔜 Wave 3 — Treasury + Weighted Voting
-`ShadowTreasury.sol`: encrypted balance (`euint64`), deposit/withdraw with `FHE.gte` solvency check, allocations linked to passed proposals. `ShadowVoteV2.sol`: weighted voting via `FHE.mul(vote, votingPower)`. FHE Operation Visualizer — animated diagram of encryption steps. Settings page with dark mode toggle.
+### ✅ Wave 2 — Spaces Lifecycle + UI Polish
 
-### 📋 Wave 4 — Delegation + Analytics
-`ShadowDelegate.sol`: delegate/undelegate voting power, vote-as-delegate, top-5 leaderboard. On-chain discussion threads via IPFS hash. Analytics dashboard — participation rate, quorum donut, voter heatmap. Full activity feed from contract event logs.
+**Spaces go from metadata records to fully functional on-chain DAOs.**
 
-### 🚀 Wave 5 — SDK + Gasless + Mainnet-ready
-`shadowdao-sdk` npm package with `ShadowVoteClient` + `ShadowSpaceClient`. EIP-712 meta-transactions for gasless voting. Multi-chain selector. PWA with offline fallback. Lighthouse ≥ 90. `TEMPLATE.md` — adapt to any contract in 30 minutes.
+| Metric | Wave 1 | Wave 2 |
+|--------|--------|--------|
+| FHE operations | 10 | **10** (same — Spaces are membership-only, no FHE) |
+| Deployed contracts | 2 | **2** (ShadowSpace redeployed at new address) |
+| App pages | 5 | **9** |
+| Space features | create / join | **+ leave / archive / remove member / member list** |
+| Dashboard stats | static | **real on-chain: votes cast, proposals created, spaces joined** |
+
+**ShadowSpace.sol redeployed** → `0x2B2A4370c5f26cB109D04047e018E65ddf413c88`
+
+Key contract changes:
+
+- **`leaveSpace(uint256 _spaceId)`** — member exits; creator is blocked (`require(msg.sender != space.creator)`) and must archive instead
+- **`archiveSpace(uint256 _spaceId)`** — soft-delete: sets `space.active = false` on-chain, emits `SpaceArchived`. Irreversible.
+- **`removeMember()` bug fix** — Wave 1 only deleted `isMember[spaceId][addr] = false` but left the address in `memberLists[]`. Wave 2 adds `_removeFromMemberList()` with swap-and-pop so `getMembers()` returns accurate data.
+- **`setShadowVoteContract(address)` + ACL** — `incrementProposalCount` is now gated: `require(shadowVoteContract == address(0) || msg.sender == shadowVoteContract)`. Wave 1 allowed any caller — fixed with `onlyOwner` + registered address.
+
+**Frontend additions:**
+
+- Spaces page — Explore / My Spaces tabs, search by name/description, 8 category filter pills with emoji, animated filter panel via `AnimatePresence`
+- SpaceDetail — join/leave buttons, archive with confirmation modal, member list with copy + Etherscan links, creator can remove any member
+- Dashboard — parallel `readContract` calls for `getUserVotes`, `getUserProposals`, `getUserSpaces` → real on-chain personal stats
+- ProposalDetail — FHE step visualizer: each encryption stage shows an `FheBadge` label (`FHE.asEuint32` → `FHE.eq + FHE.select + FHE.add` → `FHE.allowSender`)
+- Confetti on successful vote — 48 particles, pure `motion/react`, no external deps
+- `CategoryEmoji` component — maps all 8 Space categories to emoji
+- Mobile bottom nav — expanded to 5 tabs with labels, `backdrop-blur` glass effect
+
+---
+
+### 🔜 Wave 3 — Treasury + Weighted Voting (Planned)
+
+**New contracts:**
+
+- **`ShadowTreasury.sol`** — encrypted DAO treasury
+  - `euint64 encryptedBalance` — balance hidden on Etherscan, only owner decrypts via permit
+  - `deposit()` / `withdraw(InEuint64)` — `FHE.add` / `FHE.sub` on ciphertext; `FHE.gte(balance, amount)` solvency check before withdraw
+  - `proposeAllocation(uint256 proposalId, InEuint64 amount)` — links budget to ShadowVote proposal
+  - `executeAllocation(uint256 proposalId)` — releases ETH only if `proposal.revealed == true && votesFor >= quorum`
+
+- **`ShadowVoteV2.sol`** — upgrade: weighted voting
+  - `setVotingPower(address voter, InEuint32 power)` — admin sets encrypted weight per voter
+  - Vote tally: `FHE.add(tally[option], FHE.mul(encryptedVote, encryptedPower))` — weight applied on ciphertext, nobody sees individual power
+  - `getEncryptedVotingPower(address)` → caller decrypts own weight via `FHE.allowSender`
+
+**New FHE ops:** `FHE.mul`, `FHE.sub` (treasury), `FHE.gte` (solvency) — +3 ops
+
+**Frontend:** Treasury page with deposit/withdraw forms, permit-gated balance reveal, allocation list linked to proposals; "Weighted" badge on proposals; Settings page with dark/light mode toggle (CSS variables); FHE Operation Visualizer — animated diagram showing each FHE step with arrows and timing
+
+---
+
+### 📋 Wave 4 — Delegation + Analytics (Planned)
+
+**New contracts:**
+
+- **`ShadowDelegate.sol`** — encrypted vote delegation
+  - `delegate(address to)` — transfers `euint32 votingPower` to delegate; original power zeroed with `FHE.select`
+  - `undelegate()` — reclaims power
+  - `voteAsDelegate(uint256 proposalId, InEuint32 encryptedVote)` — delegate votes for all delegators; tally accumulates via `FHE.add`
+  - `getTopDelegates(uint8 limit)` — leaderboard sorted by `FHE.max` comparisons; only rank visible, not amounts
+  - `getDelegatedPower(address)` — caller gets own encrypted power via `FHE.allowSender`
+
+- **On-chain discussion** — `bytes32 ipfsHash` stored per proposal; Pinata/NFT.storage for content; `DiscussionPosted(proposalId, author, ipfsHash)` event
+
+**New FHE ops:** `FHE.select` (delegation swap), `FHE.max` (leaderboard) — +2 ops
+
+**Frontend:** Delegation page with delegate/undelegate UI, "Delegating to: 0x..." badge, top-5 leaderboard; Analytics dashboard with recharts — participation rate line chart, quorum % donut, proposals-by-category bar, voter heatmap calendar; Discussion threads on ProposalDetail (IPFS comments + timestamps); Activity feed from `getLogs(ProposalCreated, VoteCast, SpaceCreated)`
+
+---
+
+### 🚀 Wave 5 — SDK + Gasless + Mainnet-ready (Planned)
+
+**`@shadowdao/sdk` npm package:**
+- `ShadowVoteClient` — `createProposal()`, `vote()`, `reveal()`, `getProposal()` wrappers with built-in CoFHE encryption
+- `ShadowSpaceClient` — `createSpace()`, `joinSpace()`, `getMembers()` wrappers
+- Generic `useShadowVote(contractAddress, abi)` React hook — drop-in for any ShadowVote-compatible contract
+- Full TypeScript types export
+
+**Gasless voting** — EIP-712 meta-transactions in ShadowVote: user signs `VotePermit{proposalId, encryptedOption, nonce}` off-chain, relayer submits on-chain, user pays zero gas
+
+**Frontend finalization:** Multi-chain selector (Sepolia + Fhenix Testnet), PWA with `manifest.json` + service worker + offline fallback, lazy-loaded routes, custom animated 404 + error pages, OpenGraph meta tags, Lighthouse ≥ 90, `TEMPLATE.md` — adapt to your own contracts in 30 minutes
+
+> **FHE operation count by wave:** Wave 1: 10 ops · Wave 2: 10 ops (same — Spaces have no FHE) · Wave 3: +3 ops (mul, sub, gte) = 13 · Wave 4: +2 ops (select delegation swap, max leaderboard) = 15 · Wave 5: SDK wrappers, no new ops
 
 ---
 
