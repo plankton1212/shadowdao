@@ -81,9 +81,9 @@ These are **impossible** without FHE — there is no plaintext fallback:
 
 ---
 
-## Deep Fhenix Integration — 10 FHE Operations
+## Deep Fhenix Integration — 13 FHE Operations
 
-ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix integrations in any project:
+ShadowDAO uses **13 distinct FHE operations** — one of the deepest Fhenix integrations in any project:
 
 | # | Operation | Function | Purpose |
 |---|-----------|----------|---------|
@@ -122,6 +122,7 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 | **Encrypted Quorum Check** | Validate quorum without revealing vote count | `FHE.gte` |
 | **Private Winner Detection** | Find winning option without revealing any tallies | `FHE.max` |
 | **Encrypted Vote Differential** | Compute margin of victory on encrypted data | `FHE.sub` |
+| **Space-Gated Voting** | Proposals linked to Spaces — only members can vote. Cross-contract ACL via `IShadowSpace.isSpaceMember()` | ShadowVote ↔ ShadowSpace wiring |
 | **DAO Spaces** | On-chain DAO registry with members, categories, lifecycle | ShadowSpace.sol |
 | **Spaces Navigation** | My Spaces / Explore tabs; Spaces in main nav and MobileTabBar (5 tabs) | — |
 | **Leave / Archive Space** | Members can leave; creator can archive; full array cleanup on-chain | ShadowSpace.sol `leaveSpace`, `archiveSpace` |
@@ -138,7 +139,7 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 
 | Wave | Feature | Fhenix FHE |
 |------|---------|------------|
-| 2 | Member-only voting in Spaces | *(completed — `setShadowVoteContract` ACL)* |
+| 2 | **Space-gated voting** | *(completed — `IShadowSpace.isSpaceMember()` cross-contract gate in `vote()`)* |
 | 3 | Weighted voting (token balance = power) | `FHE.mul(vote, weight)` |
 | 3 | Encrypted treasury balance | `euint64`, `FHE.gte` solvency check |
 | 4 | Encrypted delegation | `FHE.allow(delegate_address)` |
@@ -169,8 +170,8 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 
 | Contract | Address | FHE Operations |
 |----------|---------|---------------|
-| **ShadowVote.sol** | [`0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5`](https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5) | 10 FHE ops (asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender) |
-| **ShadowSpace.sol** *(Wave 2 upgrade)* | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | DAO registry (no FHE — membership is public) |
+| **ShadowVote.sol** *(Wave 2)* | [`0x625b9b6cBd467E69b4981457e7235EBd2874EF86`](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) | 13 FHE ops + space-gated voting via IShadowSpace cross-contract call |
+| **ShadowSpace.sol** *(Wave 2)* | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | DAO registry + cross-contract ACL (wired to ShadowVote) |
 
 ---
 
@@ -178,7 +179,7 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 
 1. **Connect** — MetaMask on Sepolia
 2. **Dashboard** — Active proposals from blockchain, skeleton loading, live notifications. Personal stats: My Votes Cast and My Spaces count. My Spaces sidebar widget.
-3. **Create** — 4-step wizard: title → options (with templates) → duration/quorum → deploy on-chain
+3. **Create** — 5-step wizard: title → Space selector (Global or Space-gated) → options (with templates) → duration/quorum → deploy on-chain
 4. **Vote** — Select option → "Encrypt & Submit" → FHE step visualizer shows each operation with FheBadge labels (asEuint32 → eq → select → add → allowSender) → ZK proof → on-chain. Confetti on success.
 5. **Verify** — "Verify My Vote" button → EIP-712 permit → decrypt own ballot → "You voted: Option 1" (only visible to voter)
 6. **Wait** — Live countdown timer. No intermediate results visible to anyone
@@ -200,7 +201,7 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 | After reveal | All individual votes public | **Only aggregates public, votes stay encrypted forever** |
 | Quorum check | Count public votes | **FHE.gte on encrypted total** |
 | Winner detection | Compare public counts | **FHE.max on encrypted tallies** |
-| FHE operations | 0 | **10 distinct operations** |
+| FHE operations | 0 | **13 distinct operations** |
 
 ---
 
@@ -208,7 +209,7 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 
 ### How to verify FHE is real:
 
-1. **Etherscan** — View [contract source](https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5) → imports `@fhenixprotocol/cofhe-contracts/FHE.sol`
+1. **Etherscan** — View [contract source](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) → imports `@fhenixprotocol/cofhe-contracts/FHE.sol`
 2. **Vote transaction** — Check input data → `ctHash` (encrypted), not a plaintext number
 3. **Tally read** — Call `getEncryptedTally()` → returns FHE handle, not a count
 4. **After reveal** — Only aggregate totals visible; individual votes remain as encrypted handles forever
@@ -221,4 +222,4 @@ ShadowDAO uses **10 distinct FHE operations** — one of the deepest Fhenix inte
 - **Live Demo:** https://shadowdao.vercel.app
 - **GitHub:** https://github.com/plankton1212/shadowdao
 - **Fhenix CoFHE Docs:** https://cofhe-docs.fhenix.zone
-- **Contract on Etherscan:** https://sepolia.etherscan.io/address/0xd0Cb4AFC95919d6a37F1b363c6cc0745752faBb5
+- **Contract on Etherscan:** https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86
