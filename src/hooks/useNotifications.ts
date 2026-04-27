@@ -29,7 +29,14 @@ export function useNotifications() {
   const { address } = useAccount();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('shadowdao-notifications-read');
+      return raw ? new Set<string>((JSON.parse(raw) as string[])) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
 
   const fetchNotifications = useCallback(async () => {
     if (!publicClient) return;
@@ -166,17 +173,31 @@ export function useNotifications() {
     }
   }, [publicClient, address, readIds]);
 
+  const persistReadIds = (ids: Set<string>) => {
+    try {
+      // Keep only last 200 read IDs to avoid unbounded storage growth
+      const arr = [...ids].slice(-200);
+      localStorage.setItem('shadowdao-notifications-read', JSON.stringify(arr));
+    } catch {}
+  };
+
   const markAllRead = useCallback(() => {
     setReadIds((prev) => {
-      const next = new Set(prev);
+      const next = new Set<string>(prev);
       notifications.forEach((n) => next.add(n.id));
+      persistReadIds(next);
       return next;
     });
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, [notifications]);
 
   const markRead = useCallback((id: string) => {
-    setReadIds((prev) => new Set(prev).add(id));
+    setReadIds((prev) => {
+      const next = new Set<string>(prev);
+      next.add(id);
+      persistReadIds(next);
+      return next;
+    });
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
   }, []);
 
