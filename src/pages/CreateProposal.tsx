@@ -72,7 +72,9 @@ export const CreateProposal = () => {
     setFormData({ ...formData, options: newOptions });
   };
 
-  const sanitize = (s: string) => s.trim().replace(/[<>&"'/]/g, '');
+  // Strip only HTML angle brackets — React escapes everything else automatically.
+  // Removing &, ', " breaks legitimate titles like "A & B" or "Don't".
+  const sanitize = (s: string) => s.trim().replace(/[<>]/g, '');
 
   const [deployError, setDeployError] = useState<string | null>(null);
 

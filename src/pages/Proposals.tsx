@@ -28,18 +28,27 @@ export const Proposals = () => {
 
   const spaceMap = new Map<string, Space>(spaces.map((s) => [s.id.toString(), s]));
 
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  const daySeconds = 86400n;
-
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1); }, [filter, spaceFilter, search, sortKey, dateRange]);
 
   const filteredProposals = useMemo(() => {
+    const now = Date.now();
+    const dateRangeMs: Record<DateRange, number> = {
+      any: Infinity,
+      '1d': 24 * 3600 * 1000,
+      '7d': 7 * 24 * 3600 * 1000,
+      '30d': 30 * 24 * 3600 * 1000,
+    };
+    const maxAgeMs = dateRangeMs[dateRange];
+
     let list = proposals.filter((p) => {
       const matchesFilter = filter === 'ALL' || p.status === filter;
       const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase());
       const matchesSpace = spaceFilter === 'ALL' || (p.spaceGated && p.spaceId === spaceFilter);
-      return matchesFilter && matchesSearch && matchesSpace;
+      // Date range: show proposals whose deadline is within maxAgeMs from now
+      // (covers both active proposals and recently ended ones)
+      const matchesDate = maxAgeMs === Infinity || Math.abs(now - p.deadline.getTime()) <= maxAgeMs;
+      return matchesFilter && matchesSearch && matchesSpace && matchesDate;
     });
 
     // Sort
@@ -47,12 +56,12 @@ export const Proposals = () => {
       if (sortKey === 'newest') return Number(b.id - a.id);
       if (sortKey === 'oldest') return Number(a.id - b.id);
       if (sortKey === 'most_votes') return Number(b.voterCount - a.voterCount);
-      if (sortKey === 'deadline_soonest') return Number(a.deadline - b.deadline);
+      if (sortKey === 'deadline_soonest') return a.deadline.getTime() - b.deadline.getTime();
       return 0;
     });
 
     return list;
-  }, [proposals, filter, search, spaceFilter, sortKey]);
+  }, [proposals, filter, search, spaceFilter, sortKey, dateRange]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProposals.length / PAGE_SIZE));
   const pagedProposals = filteredProposals.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -181,14 +190,14 @@ export const Proposals = () => {
                 {/* Date range */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-text-muted uppercase tracking-wide flex items-center gap-1">
-                    <CalendarDays className="w-3 h-3" /> Created
+                    <CalendarDays className="w-3 h-3" /> Deadline within
                   </label>
                   <select value={dateRange} onChange={e => setDateRange(e.target.value as DateRange)}
                     className="w-full px-3 py-2 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none cursor-pointer">
-                    <option value="any">Any time</option>
-                    <option value="1d">Last 24h</option>
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
+                    <option value="any">Any</option>
+                    <option value="1d">± 1 day</option>
+                    <option value="7d">± 7 days</option>
+                    <option value="30d">± 30 days</option>
                   </select>
                 </div>
               </div>

@@ -1,10 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useWalletClient, usePublicClient } from 'wagmi';
+import { useWalletClient, usePublicClient, useAccount } from 'wagmi';
 
-// Module-level singleton — one CoFHE client per browser session, shared across all hooks
+// Module-level singleton — one CoFHE client per browser session, shared across all hooks.
+// Tracks the wallet address + chainId used to build the client so we can detect account/chain
+// switches and rebuild with the new signer context.
 let _client: any = null;
 let _sdk: any = null;
 let _initPromise: Promise<any> | null = null;
+let _builtForAddress: string | null = null;
+let _builtForChainId: number | null = null;
+
+function resetCofheSingleton() {
+  _client = null;
+  _initPromise = null;
+  _builtForAddress = null;
+  _builtForChainId = null;
+  // _sdk can stay — it's just the imported module, not wallet-specific
+}
 
 async function buildClient(walletClient: any, publicClient: any): Promise<any> {
   if (_client) return _client;
@@ -48,6 +60,8 @@ async function buildClient(walletClient: any, publicClient: any): Promise<any> {
     await client.connect(publicClient, walletClient);
   }
 
+  _builtForAddress = walletClient.account?.address ?? null;
+  _builtForChainId = publicClient.chain?.id ?? null;
   _client = client;
   return client;
 }
@@ -55,9 +69,20 @@ async function buildClient(walletClient: any, publicClient: any): Promise<any> {
 export function useCofhe() {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const { address, chainId } = useAccount();
   const [isInitialized, setIsInitialized] = useState(!!_client);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Detect wallet account or chain change — reset singleton so next operation
+  // gets a client bound to the new signer context (prevents cross-account leakage)
+  useEffect(() => {
+    if (!address || !chainId) return;
+    if (_client && (_builtForAddress !== address || _builtForChainId !== chainId)) {
+      resetCofheSingleton();
+      setIsInitialized(false);
+    }
+  }, [address, chainId]);
 
   useEffect(() => {
     if (!walletClient || !publicClient || _client) return;

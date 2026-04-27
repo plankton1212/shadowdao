@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -63,7 +63,7 @@ export const ProposalDetail = () => {
   const { castVote, voteState, txHash, error: voteError, reset: resetVote } = useVote();
   const { revealResults, fetchDecryptedResults, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
-  const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError } = useVerifyVote();
+  const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError, reset: resetVerify } = useVerifyVote();
   const { spaces, checkIsMember } = useSpaces();
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -73,16 +73,23 @@ export const ProposalDetail = () => {
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState('');
   const [isVoting, setIsVoting] = useState(false);
+  const isVotingRef = useRef(false); // synchronous guard against double-click
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const proposalId = BigInt(id || '0');
-  const proposal = proposals.find((p) => p.id === proposalId);
+  // Validate URL param before BigInt conversion — BigInt('abc') throws SyntaxError
+  const proposalId: bigint | null = (() => {
+    try { return id ? BigInt(id) : null; } catch { return null; }
+  })();
+  const proposal = proposalId !== null ? proposals.find((p) => p.id === proposalId) : undefined;
+
+  // Reset verify state when navigating between proposals
+  useEffect(() => { resetVerify(); }, [proposalId]); // eslint-disable-line react-hooks/exhaustive-deps
   const countdown = useCountdown(proposal?.deadline || new Date());
 
   // Check if user has voted + space membership
   useEffect(() => {
     const check = async () => {
-      if (!proposal) return;
+      if (!proposal || proposalId === null) return;
       try {
         setCheckingVote(true);
         const [voted, memberStatus] = await Promise.all([
@@ -102,10 +109,27 @@ export const ProposalDetail = () => {
 
   // Fetch decrypted results if revealed
   useEffect(() => {
-    if (proposal?.revealed && results.length === 0) {
+    if (proposal?.revealed && results.length === 0 && proposalId !== null) {
       fetchDecryptedResults(proposalId, proposal.optionCount);
     }
   }, [proposal?.revealed, proposalId, proposal?.optionCount, fetchDecryptedResults, results.length]);
+
+  // Invalid URL param (non-numeric) — show 404 immediately
+  if (proposalId === null) {
+    return (
+      <AppLayout>
+        <PageWrapper>
+          <div className="max-w-3xl mx-auto text-center py-20 space-y-4">
+            <h2 className="text-2xl font-bold">Invalid proposal ID</h2>
+            <p className="text-text-secondary">The URL contains an invalid proposal identifier.</p>
+            <Button variant="outline" onClick={() => navigate('/app/proposals')}>
+              Back to Proposals
+            </Button>
+          </div>
+        </PageWrapper>
+      </AppLayout>
+    );
+  }
 
   if (loading) {
     return (
@@ -136,16 +160,19 @@ export const ProposalDetail = () => {
   }
 
   const handleVote = async () => {
-    if (selectedOption === null || isVoting) return;
+    // isVotingRef is a synchronous guard; isVoting state guard only kicks in after re-render
+    if (selectedOption === null || isVotingRef.current) return;
+    isVotingRef.current = true;
     setIsVoting(true);
     try {
-      const success = await castVote(proposalId, selectedOption);
+      const success = await castVote(proposalId!, selectedOption);
       if (success) {
         setHasVoted(true);
         setShowConfetti(true);
         await refetch();
       }
     } finally {
+      isVotingRef.current = false;
       setIsVoting(false);
     }
   };
@@ -168,7 +195,7 @@ export const ProposalDetail = () => {
   const handleCancel = async () => {
     if (Number(proposal.voterCount) > 0) return;
     const success = await cancelProposal(proposalId);
-    if (success) window.location.reload();
+    if (success) await refetch();
   };
 
   const handleExtend = async () => {
@@ -180,7 +207,7 @@ export const ProposalDetail = () => {
     const success = await extendDeadline(proposalId, newDeadline);
     if (success) {
       setShowExtend(false);
-      window.location.reload();
+      await refetch();
     }
   };
 

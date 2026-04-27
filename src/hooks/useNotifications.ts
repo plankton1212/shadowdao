@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 
@@ -24,6 +24,13 @@ function timeAgo(timestamp: number): string {
   return `${days}d ago`;
 }
 
+const persistReadIds = (ids: Set<string>) => {
+  try {
+    const arr = [...ids].slice(-200);
+    localStorage.setItem('shadowdao-notifications-read', JSON.stringify(arr));
+  } catch {}
+};
+
 export function useNotifications() {
   const publicClient = usePublicClient();
   const { address } = useAccount();
@@ -32,11 +39,16 @@ export function useNotifications() {
   const [readIds, setReadIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('shadowdao-notifications-read');
-      return raw ? new Set<string>((JSON.parse(raw) as string[])) : new Set<string>();
+      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set<string>();
     } catch {
       return new Set<string>();
     }
   });
+
+  // Use a ref so fetchNotifications can read the current readIds value
+  // without being in its dependency array (prevents infinite re-fetch loop)
+  const readIdsRef = useRef(readIds);
+  readIdsRef.current = readIds;
 
   const fetchNotifications = useCallback(async () => {
     if (!publicClient) return;
@@ -45,7 +57,7 @@ export function useNotifications() {
       setLoading(true);
 
       const currentBlock = await publicClient.getBlockNumber();
-      // Look back ~2000 blocks (~7 hours on Sepolia)
+      // Look back ~2000 blocks (~7 hours on Sepolia at ~12s/block)
       const fromBlock = currentBlock > 2000n ? currentBlock - 2000n : 0n;
 
       const [proposalLogs, voteLogs, revealLogs] = await Promise.all([
@@ -93,9 +105,7 @@ export function useNotifications() {
         }).catch(() => []),
       ]);
 
-      const items: Notification[] = [];
-
-      // Get block timestamps for all unique blocks
+      // Resolve block timestamps (batch unique blocks, cap at 50 RPC calls)
       const blockNumbers = new Set<bigint>();
       [...proposalLogs, ...voteLogs, ...revealLogs].forEach((log) => {
         if (log.blockNumber) blockNumbers.add(log.blockNumber);
@@ -111,11 +121,15 @@ export function useNotifications() {
         })
       );
 
+      const current = readIdsRef.current;
+      const items: Notification[] = [];
+
       for (const log of proposalLogs) {
         const args = (log as any).args;
-        if (!args) continue;
+        if (!args?.proposalId) continue;
         const ts = blockTimestamps.get(log.blockNumber!) || Date.now();
-        const id = `proposal-${args.proposalId}-${log.blockNumber}`;
+        // Include logIndex to prevent ID collision for multiple events in same block
+        const id = `proposal-${args.proposalId}-${log.blockNumber}-${log.logIndex ?? 0}`;
         items.push({
           id,
           type: 'proposal',
@@ -123,15 +137,15 @@ export function useNotifications() {
           time: timeAgo(ts),
           timestamp: ts,
           proposalId: args.proposalId,
-          read: readIds.has(id),
+          read: current.has(id),
         });
       }
 
       for (const log of voteLogs) {
         const args = (log as any).args;
-        if (!args) continue;
+        if (!args?.proposalId) continue;
         const ts = blockTimestamps.get(log.blockNumber!) || Date.now();
-        const id = `vote-${args.proposalId}-${args.voter}-${log.blockNumber}`;
+        const id = `vote-${args.proposalId}-${args.voter}-${log.blockNumber}-${log.logIndex ?? 0}`;
         const isMe = args.voter?.toLowerCase() === address?.toLowerCase();
         items.push({
           id,
@@ -142,15 +156,15 @@ export function useNotifications() {
           time: timeAgo(ts),
           timestamp: ts,
           proposalId: args.proposalId,
-          read: readIds.has(id),
+          read: current.has(id),
         });
       }
 
       for (const log of revealLogs) {
         const args = (log as any).args;
-        if (!args) continue;
+        if (!args?.proposalId) continue;
         const ts = blockTimestamps.get(log.blockNumber!) || Date.now();
-        const id = `reveal-${args.proposalId}-${log.blockNumber}`;
+        const id = `reveal-${args.proposalId}-${log.blockNumber}-${log.logIndex ?? 0}`;
         items.push({
           id,
           type: 'reveal',
@@ -158,38 +172,32 @@ export function useNotifications() {
           time: timeAgo(ts),
           timestamp: ts,
           proposalId: args.proposalId,
-          read: readIds.has(id),
+          read: current.has(id),
         });
       }
 
-      // Sort newest first
       items.sort((a, b) => b.timestamp - a.timestamp);
-
       setNotifications(items.slice(0, 20));
     } catch (err) {
       console.warn('[ShadowDAO] Failed to fetch notifications:', err);
     } finally {
       setLoading(false);
     }
-  }, [publicClient, address, readIds]);
-
-  const persistReadIds = (ids: Set<string>) => {
-    try {
-      // Keep only last 200 read IDs to avoid unbounded storage growth
-      const arr = [...ids].slice(-200);
-      localStorage.setItem('shadowdao-notifications-read', JSON.stringify(arr));
-    } catch {}
-  };
+  // readIds intentionally omitted — read via readIdsRef.current to avoid
+  // re-fetching blockchain every time user marks a notification as read
+  }, [publicClient, address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markAllRead = useCallback(() => {
     setReadIds((prev) => {
       const next = new Set<string>(prev);
-      notifications.forEach((n) => next.add(n.id));
+      setNotifications((ns) => {
+        ns.forEach((n) => next.add(n.id));
+        return ns.map((n) => ({ ...n, read: true }));
+      });
       persistReadIds(next);
       return next;
     });
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, [notifications]);
+  }, []);
 
   const markRead = useCallback((id: string) => {
     setReadIds((prev) => {
@@ -203,7 +211,7 @@ export function useNotifications() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, 30_000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
