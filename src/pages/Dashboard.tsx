@@ -407,30 +407,35 @@ function ActivityFeed() {
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Limit to last 100k blocks (~14 days on Sepolia) to avoid RPC limits
+  const BLOCKS_WINDOW = 100_000n;
+
   const fetchEvents = useCallback(async () => {
     if (!publicClient) return;
     setLoading(true);
     try {
+      const latestBlock = await publicClient.getBlockNumber();
+      const fromBlock = latestBlock > BLOCKS_WINDOW ? latestBlock - BLOCKS_WINDOW : 0n;
       const [voteLogs, proposalLogs, revealLogs, cancelLogs] = await Promise.all([
         publicClient.getLogs({
           address: SHADOWVOTE_ADDRESS,
           event: { name: 'VoteCast', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'voter', type: 'address', indexed: true }] },
-          fromBlock: 'earliest', toBlock: 'latest',
+          fromBlock, toBlock: 'latest',
         }),
         publicClient.getLogs({
           address: SHADOWVOTE_ADDRESS,
           event: { name: 'ProposalCreated', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'creator', type: 'address', indexed: true }, { name: 'title', type: 'string', indexed: false }, { name: 'optionCount', type: 'uint8', indexed: false }, { name: 'deadline', type: 'uint256', indexed: false }, { name: 'quorum', type: 'uint256', indexed: false }, { name: 'spaceId', type: 'uint256', indexed: false }, { name: 'spaceGated', type: 'bool', indexed: false }] },
-          fromBlock: 'earliest', toBlock: 'latest',
+          fromBlock, toBlock: 'latest',
         }),
         publicClient.getLogs({
           address: SHADOWVOTE_ADDRESS,
           event: { name: 'ResultsRevealed', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }] },
-          fromBlock: 'earliest', toBlock: 'latest',
+          fromBlock, toBlock: 'latest',
         }),
         publicClient.getLogs({
           address: SHADOWVOTE_ADDRESS,
           event: { name: 'ProposalCancelled', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'creator', type: 'address', indexed: true }] },
-          fromBlock: 'earliest', toBlock: 'latest',
+          fromBlock, toBlock: 'latest',
         }),
       ]);
 

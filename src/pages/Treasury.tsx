@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, AppLayout, PageWrapper, Button } from '../components/UI';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 import { parseEther, formatEther, encodeFunctionData, decodeFunctionResult } from 'viem';
 import {
   SHADOWTREASURY_ADDRESS, SHADOWVOTEV2_ADDRESS,
@@ -38,7 +39,7 @@ const FheStep = ({ label, active, done }: { label: string; active: boolean; done
 );
 
 export const Treasury = () => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
@@ -114,6 +115,7 @@ export const Treasury = () => {
 
   const handleDeposit = async () => {
     if (!walletClient || !depositAmount || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setLoading(true);
     setError(null);
     try {
@@ -136,6 +138,7 @@ export const Treasury = () => {
 
   const handleWithdraw = async () => {
     if (!walletClient || !withdrawAmount || !withdrawTo || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setLoading(true);
     setError(null);
     try {
@@ -159,6 +162,7 @@ export const Treasury = () => {
 
   const handleProposeAllocation = async () => {
     if (!walletClient || !allocProposal || !allocAmount || !allocRecipient || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setLoading(true);
     setError(null);
     try {
@@ -183,6 +187,7 @@ export const Treasury = () => {
 
   const handleExecuteAllocation = async (id: number) => {
     if (!walletClient || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setLoading(true);
     setError(null);
     try {
@@ -213,6 +218,7 @@ export const Treasury = () => {
 
   const handleRevealBalance = async () => {
     if (!walletClient || !publicClient || !address) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setRevealSteps([]);
     setRevealedBalance(null);
     setDecrypting(true);

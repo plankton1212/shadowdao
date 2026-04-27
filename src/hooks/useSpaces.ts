@@ -16,16 +16,24 @@ export interface Space {
   active: boolean;
 }
 
+// Module-level cache — shared across all instances
+let spaceCache: { data: Space[]; ts: number } | null = null;
+const SPACE_TTL = 60_000; // 60 s
+
 export function useSpaces() {
   const publicClient = usePublicClient();
   const { address } = useAccount();
-  const [spaces, setSpaces] = useState<Space[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [spaces, setSpaces] = useState<Space[]>(() => spaceCache?.data ?? []);
+  const [loading, setLoading] = useState(!spaceCache);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSpaces = useCallback(async () => {
+  const fetchSpaces = useCallback(async (force = false) => {
     if (!publicClient) return;
-
+    if (!force && spaceCache && Date.now() - spaceCache.ts < SPACE_TTL) {
+      setSpaces(spaceCache.data);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -67,7 +75,9 @@ export function useSpaces() {
         };
       }).filter((s) => s.active);
 
-      setSpaces(fetched.reverse());
+      const sorted = fetched.reverse();
+      spaceCache = { data: sorted, ts: Date.now() };
+      setSpaces(sorted);
     } catch (err: any) {
       console.error('Failed to fetch spaces:', err);
       setError(err.message || 'Failed to load spaces');
@@ -133,5 +143,10 @@ export function useSpaces() {
     fetchSpaces();
   }, [fetchSpaces]);
 
-  return { spaces, loading, error, refetch: fetchSpaces, checkIsMember, getMembers, getUserSpaceIds };
+  const refetch = useCallback(() => {
+    spaceCache = null;
+    return fetchSpaces(true);
+  }, [fetchSpaces]);
+
+  return { spaces, loading, error, refetch, checkIsMember, getMembers, getUserSpaceIds };
 }

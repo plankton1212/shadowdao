@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { useWriteContract, usePublicClient } from 'wagmi';
+import { useWriteContract, usePublicClient, useChainId } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 import { useCofhe } from './useCofhe';
 
@@ -9,14 +10,19 @@ export function useVote() {
   const [voteState, setVoteState] = useState<VoteState>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const chainId = useChainId();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const { encrypt, initialize, isInitialized } = useCofhe();
 
   const castVote = useCallback(
-    async (proposalId: bigint, optionIndex: number) => {
+    async (proposalId: bigint, optionIndex: number): Promise<boolean> => {
       try {
         setError(null);
+
+        if (chainId !== sepolia.id) {
+          throw new Error('Wrong network — switch to Ethereum Sepolia to vote');
+        }
 
         if (optionIndex < 0 || !Number.isInteger(optionIndex)) {
           throw new Error('Invalid option selected');
@@ -60,14 +66,16 @@ export function useVote() {
 
         await publicClient!.waitForTransactionReceipt({ hash });
         setVoteState('success');
+        return true;
       } catch (err: any) {
         console.error('Vote failed:', err);
         const message = err.shortMessage || err.message || 'Vote failed';
         setError(message);
         setVoteState('error');
+        return false;
       }
     },
-    [writeContractAsync, publicClient, encrypt, initialize, isInitialized]
+    [chainId, writeContractAsync, publicClient, encrypt, initialize, isInitialized]
   );
 
   const reset = useCallback(() => {

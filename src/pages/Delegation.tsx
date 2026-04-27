@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, AppLayout, PageWrapper, Button } from '../components/UI';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 import {
   SHADOWDELEGATE_ADDRESS, SHADOWDELEGATE_ABI, etherscanAddress, etherscanTx,
 } from '../config/contract';
@@ -16,7 +17,7 @@ const DEPLOYED = true; // contracts deployed on Sepolia
 type TopDelegate = { address: string; count: number };
 
 export const Delegation = () => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
@@ -85,6 +86,7 @@ export const Delegation = () => {
 
   const handleDelegate = async () => {
     if (!walletClient || !delegateTo || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     if (!/^0x[0-9a-fA-F]{40}$/.test(delegateTo)) {
       setError('Invalid Ethereum address');
       return;
@@ -118,6 +120,7 @@ export const Delegation = () => {
 
   const handleUndelegate = async () => {
     if (!walletClient || !publicClient) return;
+    if (chainId !== sepolia.id) { setError('Wrong network — switch to Ethereum Sepolia'); return; }
     setEncrypting(true);
     setError(null);
     try {

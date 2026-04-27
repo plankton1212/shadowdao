@@ -25,15 +25,24 @@ function getStatus(deadline: Date, revealed: boolean, optionCount: number): Prop
   return 'VOTING';
 }
 
+// Module-level cache — shared across all instances, survives component remounts
+let proposalCache: { data: Proposal[]; ts: number } | null = null;
+const PROPOSAL_TTL = 30_000; // 30 s
+
 export function useProposals() {
   const publicClient = usePublicClient();
   const { address } = useAccount();
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [proposals, setProposals] = useState<Proposal[]>(() => proposalCache?.data ?? []);
+  const [loading, setLoading] = useState(!proposalCache);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProposals = useCallback(async () => {
+  const fetchProposals = useCallback(async (force = false) => {
     if (!publicClient) return;
+    if (!force && proposalCache && Date.now() - proposalCache.ts < PROPOSAL_TTL) {
+      setProposals(proposalCache.data);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -76,7 +85,9 @@ export function useProposals() {
         };
       });
 
-      setProposals(fetchedProposals.reverse());
+      const sorted = fetchedProposals.reverse();
+      proposalCache = { data: sorted, ts: Date.now() };
+      setProposals(sorted);
     } catch (err: any) {
       console.error('Failed to fetch proposals:', err);
       setError(err.message || 'Failed to load proposals');
@@ -152,11 +163,16 @@ export function useProposals() {
     fetchProposals();
   }, [fetchProposals]);
 
+  const refetch = useCallback(() => {
+    proposalCache = null;
+    return fetchProposals(true);
+  }, [fetchProposals]);
+
   return {
     proposals,
     loading,
     error,
-    refetch: fetchProposals,
+    refetch,
     checkHasVoted,
     getUserProposalIds,
     getUserVoteIds,

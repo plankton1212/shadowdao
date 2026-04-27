@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2, Lock, SlidersHorizontal, X, CalendarDays, ArrowUpDown } from 'lucide-react';
+import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2, Lock, SlidersHorizontal, X, CalendarDays, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, ProposalSkeleton, CategoryEmoji } from '../components/UI';
 import { useProposals, ProposalStatus } from '../hooks/useProposals';
@@ -12,6 +12,8 @@ import { CATEGORY_LABELS } from '../config/contract';
 type SortKey = 'newest' | 'oldest' | 'most_votes' | 'deadline_soonest';
 type DateRange = 'any' | '1d' | '7d' | '30d';
 
+const PAGE_SIZE = 10;
+
 export const Proposals = () => {
   const navigate = useNavigate();
   const { proposals, loading, error, refetch } = useProposals();
@@ -22,11 +24,15 @@ export const Proposals = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('newest');
   const [dateRange, setDateRange] = useState<DateRange>('any');
+  const [page, setPage] = useState(1);
 
   const spaceMap = new Map<string, Space>(spaces.map((s) => [s.id.toString(), s]));
 
   const now = BigInt(Math.floor(Date.now() / 1000));
   const daySeconds = 86400n;
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [filter, spaceFilter, search, sortKey, dateRange]);
 
   const filteredProposals = useMemo(() => {
     let list = proposals.filter((p) => {
@@ -47,6 +53,9 @@ export const Proposals = () => {
 
     return list;
   }, [proposals, filter, search, spaceFilter, sortKey]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProposals.length / PAGE_SIZE));
+  const pagedProposals = filteredProposals.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const activeFilterCount = [
     filter !== 'ALL',
@@ -201,7 +210,7 @@ export const Proposals = () => {
           ) : (
             <div className="space-y-4">
               {filteredProposals.length > 0 ? (
-                filteredProposals.map((proposal, i) => (
+                pagedProposals.map((proposal, i) => (
                   <motion.div
                     key={proposal.id.toString()}
                     initial={{ opacity: 0, y: 15 }}
@@ -259,7 +268,62 @@ export const Proposals = () => {
                   </Card>
                   </motion.div>
                 ))
-              ) : (
+              ) : null}
+
+              {/* Pagination */}
+              {filteredProposals.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between pt-4">
+                  <span className="text-sm text-text-muted">
+                    {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredProposals.length)} of {filteredProposals.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="p-2 h-auto"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                      .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                        if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) =>
+                        p === '...' ? (
+                          <span key={`ellipsis-${i}`} className="text-text-muted text-sm px-1">…</span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setPage(p as number)}
+                            className={cn(
+                              'w-8 h-8 rounded-input text-sm font-bold transition-all',
+                              page === p ? 'bg-primary-accent text-white' : 'bg-white border border-default text-text-secondary hover:bg-surface-tinted'
+                            )}
+                          >
+                            {p}
+                          </button>
+                        )
+                      )
+                    }
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="p-2 h-auto"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {filteredProposals.length === 0 && (
                 <div className="text-center py-20 bg-white/50 rounded-card border border-dashed border-default space-y-4">
                   <div className="w-16 h-16 bg-bg-base rounded-full flex items-center justify-center mx-auto">
                     <VoteIcon className="w-8 h-8 text-text-muted" />

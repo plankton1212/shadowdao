@@ -30,7 +30,8 @@ import { useProposalAdmin } from '../hooks/useProposalAdmin';
 import { useVerifyVote } from '../hooks/useVerifyVote';
 import { useSpaces } from '../hooks/useSpaces';
 import { etherscanTx, SHADOWVOTE_ADDRESS, SHADOWVOTEV2_ADDRESS, SHADOWVOTEV2_ABI } from '../config/contract';
-import { usePublicClient, useWalletClient } from 'wagmi';
+import { usePublicClient, useWalletClient, useChainId } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 import { cn, formatAddress } from '../utils';
 
 function useCountdown(deadline: Date) {
@@ -137,11 +138,16 @@ export const ProposalDetail = () => {
   const handleVote = async () => {
     if (selectedOption === null || isVoting) return;
     setIsVoting(true);
-    await castVote(proposalId, selectedOption);
-    setHasVoted(true);
-    setShowConfetti(true);
-    await refetch();
-    setIsVoting(false);
+    try {
+      const success = await castVote(proposalId, selectedOption);
+      if (success) {
+        setHasVoted(true);
+        setShowConfetti(true);
+        await refetch();
+      }
+    } finally {
+      setIsVoting(false);
+    }
   };
 
   const handleReveal = async () => {
@@ -788,6 +794,7 @@ const V2_DEPLOYED = true; // contracts deployed on Sepolia
 
 function DiscussionSection({ proposalId }: { proposalId: bigint }) {
   const { address } = useAccount();
+  const chainId = useChainId();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
@@ -844,6 +851,7 @@ function DiscussionSection({ proposalId }: { proposalId: bigint }) {
 
   const handlePost = async () => {
     if (!walletClient || !commentText.trim() || !publicClient || !address) return;
+    if (chainId !== sepolia.id) { setPostError('Wrong network — switch to Ethereum Sepolia'); return; }
     setPosting(true);
     setPostError(null);
     try {

@@ -98,10 +98,17 @@ export const Analytics = () => {
   const [eventsLoading, setEventsLoading] = useState(false);
 
   // Fetch VoteCast events + resolve block timestamps for accurate charts
+  // Block range limited to last 200k blocks (~28 days on Sepolia ~12s/block)
+  // to avoid RPC "response too large" errors on production RPCs
+  const BLOCKS_WINDOW = 200_000n;
+
   const fetchEvents = useCallback(async () => {
     if (!publicClient) return;
     setEventsLoading(true);
     try {
+      const latestBlock = await publicClient.getBlockNumber();
+      const fromBlock = latestBlock > BLOCKS_WINDOW ? latestBlock - BLOCKS_WINDOW : 0n;
+
       const logs = await publicClient.getLogs({
         address: SHADOWVOTE_ADDRESS,
         event: {
@@ -112,7 +119,7 @@ export const Analytics = () => {
             { name: 'voter', type: 'address', indexed: true },
           ],
         },
-        fromBlock: 'earliest',
+        fromBlock,
         toBlock: 'latest',
       });
 
@@ -156,7 +163,7 @@ export const Analytics = () => {
   // ─── Computed metrics ──────────────────────────────────────────────────────
   const totalProposals = proposals.length;
   const revealedProposals = proposals.filter(p => p.revealed).length;
-  const activeProposals = proposals.filter(p => !p.revealed && p.deadline > BigInt(Math.floor(Date.now() / 1000))).length;
+  const activeProposals = proposals.filter(p => !p.revealed && p.deadline.getTime() > Date.now()).length;
   const totalVotes = voteCastEvents.length;
 
   const uniqueVoters = new Set(voteCastEvents.map(e => e.voter)).size;
@@ -167,18 +174,14 @@ export const Analytics = () => {
   const weeklyVotes: number[] = new Array(8).fill(0);
   const nowSec = Math.floor(Date.now() / 1000);
   const weekSec = 7 * 24 * 3600;
-  const hasTimestamps = voteCastEvents.some(e => e.timestamp !== undefined);
 
-  voteCastEvents.forEach((e, i) => {
+  voteCastEvents.forEach(e => {
     if (e.timestamp !== undefined) {
       const ageSeconds = nowSec - e.timestamp;
       const weekIndex = Math.floor(ageSeconds / weekSec);
       if (weekIndex >= 0 && weekIndex < 8) {
         weeklyVotes[7 - weekIndex]++;
       }
-    } else {
-      // Fallback: distribute by block number ratio when timestamps unavailable
-      weeklyVotes[i % 8]++;
     }
   });
   const participationLine = weeklyVotes;
@@ -203,22 +206,14 @@ export const Analytics = () => {
   // Heatmap: last 28 days grid (7 cols × 4 rows)
   const daySeconds = 86400;
   const heatmapData: number[] = new Array(28).fill(0);
-  const minBlock = voteCastEvents.reduce((m, e) => e.blockNumber < m ? e.blockNumber : m, BigInt(Number.MAX_SAFE_INTEGER));
-  const maxBlock = voteCastEvents.reduce((m, e) => e.blockNumber > m ? e.blockNumber : m, 0n);
 
   voteCastEvents.forEach(e => {
     if (e.timestamp !== undefined) {
-      // Use real timestamp: bucket into day index within last 28 days
       const ageSeconds = nowSec - e.timestamp;
       const dayIndex = Math.floor(ageSeconds / daySeconds);
       if (dayIndex >= 0 && dayIndex < 28) {
         heatmapData[27 - dayIndex]++;
       }
-    } else {
-      // Fallback: distribute by block number ratio
-      if (maxBlock === minBlock) { heatmapData[0]++; return; }
-      const ratio = Number(e.blockNumber - minBlock) / Number(maxBlock - minBlock);
-      heatmapData[Math.min(27, Math.floor(ratio * 28))]++;
     }
   });
 

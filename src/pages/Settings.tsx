@@ -38,6 +38,54 @@ const Select = ({ value, options, onChange }: { value: string; options: { value:
   </select>
 );
 
+const SETTINGS_KEY = 'shadowdao-settings';
+
+interface SavedSettings {
+  autoReveal: boolean;
+  confirmBeforeVote: boolean;
+  defaultQuorum: string;
+  defaultDuration: string;
+  hideBalance: boolean;
+  autoPermit: boolean;
+  showVoteHistory: boolean;
+  notifyNewProposal: boolean;
+  notifyDeadline: boolean;
+  notifyResults: boolean;
+  notifyMembers: boolean;
+  soundEnabled: boolean;
+  compactMode: boolean;
+  showQuorumPercent: boolean;
+  dateFormat: string;
+}
+
+const DEFAULTS: SavedSettings = {
+  autoReveal: true,
+  confirmBeforeVote: true,
+  defaultQuorum: '10',
+  defaultDuration: '4320',
+  hideBalance: true,
+  autoPermit: true,
+  showVoteHistory: false,
+  notifyNewProposal: true,
+  notifyDeadline: true,
+  notifyResults: true,
+  notifyMembers: false,
+  soundEnabled: false,
+  compactMode: false,
+  showQuorumPercent: true,
+  dateFormat: 'relative',
+};
+
+function loadSettings(): SavedSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULTS;
+    return { ...DEFAULTS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULTS;
+  }
+}
+
 export const Settings = () => {
   const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
@@ -49,7 +97,7 @@ export const Settings = () => {
   const [showBalance, setShowBalance] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Theme
+  // Theme — stored separately (used in main.tsx on boot)
   const [darkMode, setDarkMode] = useState(() => document.documentElement.getAttribute('data-theme') === 'dark');
 
   useEffect(() => {
@@ -57,28 +105,23 @@ export const Settings = () => {
     localStorage.setItem('shadowdao-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Voting preferences
-  const [autoReveal, setAutoReveal] = useState(true);
-  const [confirmBeforeVote, setConfirmBeforeVote] = useState(true);
-  const [defaultQuorum, setDefaultQuorum] = useState('10');
-  const [defaultDuration, setDefaultDuration] = useState('4320');
+  // All other settings — loaded from & persisted to localStorage
+  const [settings, setSettings] = useState<SavedSettings>(loadSettings);
 
-  // Privacy
-  const [hideBalance, setHideBalance] = useState(true);
-  const [autoPermit, setAutoPermit] = useState(true);
-  const [showVoteHistory, setShowVoteHistory] = useState(false);
+  const set = <K extends keyof SavedSettings>(key: K, value: SavedSettings[K]) => {
+    setSettings(prev => {
+      const next = { ...prev, [key]: value };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
-  // Notifications
-  const [notifyNewProposal, setNotifyNewProposal] = useState(true);
-  const [notifyDeadline, setNotifyDeadline] = useState(true);
-  const [notifyResults, setNotifyResults] = useState(true);
-  const [notifyMembers, setNotifyMembers] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
-
-  // Display
-  const [compactMode, setCompactMode] = useState(false);
-  const [showQuorumPercent, setShowQuorumPercent] = useState(true);
-  const [dateFormat, setDateFormat] = useState('relative');
+  const {
+    autoReveal, confirmBeforeVote, defaultQuorum, defaultDuration,
+    hideBalance, autoPermit, showVoteHistory,
+    notifyNewProposal, notifyDeadline, notifyResults, notifyMembers, soundEnabled,
+    compactMode, showQuorumPercent, dateFormat,
+  } = settings;
 
   const wrongNetwork = chainId !== sepolia.id;
   const myProposals = proposals.filter((p) => p.creator.toLowerCase() === address?.toLowerCase());
@@ -190,7 +233,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Confirm before voting</div>
                   <div className="text-xs text-text-muted">Show confirmation dialog before submitting encrypted ballot</div>
                 </div>
-                <Toggle checked={confirmBeforeVote} onChange={setConfirmBeforeVote} />
+                <Toggle checked={confirmBeforeVote} onChange={v => set('confirmBeforeVote', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -198,7 +241,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Auto-reveal after deadline</div>
                   <div className="text-xs text-text-muted">Automatically trigger reveal when deadline passes and quorum met</div>
                 </div>
-                <Toggle checked={autoReveal} onChange={setAutoReveal} />
+                <Toggle checked={autoReveal} onChange={v => set('autoReveal', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -206,7 +249,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Default quorum</div>
                   <div className="text-xs text-text-muted">Pre-fill quorum when creating proposals</div>
                 </div>
-                <Select value={defaultQuorum} onChange={setDefaultQuorum} options={[
+                <Select value={defaultQuorum} onChange={v => set('defaultQuorum', v)} options={[
                   { value: '1', label: '1 vote' },
                   { value: '5', label: '5 votes' },
                   { value: '10', label: '10 votes' },
@@ -221,7 +264,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Default duration</div>
                   <div className="text-xs text-text-muted">Pre-fill voting period when creating proposals</div>
                 </div>
-                <Select value={defaultDuration} onChange={setDefaultDuration} options={[
+                <Select value={defaultDuration} onChange={v => set('defaultDuration', v)} options={[
                   { value: '10', label: '10 min' },
                   { value: '60', label: '1 hour' },
                   { value: '1440', label: '1 day' },
@@ -247,12 +290,15 @@ export const Settings = () => {
             </div>
 
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-3 bg-surface-highlight rounded-xl">
                 <div className="space-y-0.5">
-                  <div className="text-sm font-bold">FHE Shielded Voting</div>
-                  <div className="text-xs text-text-muted">All ballots encrypted before on-chain submission</div>
+                  <div className="text-sm font-bold flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-primary-accent" />
+                    FHE Shielded Voting
+                  </div>
+                  <div className="text-xs text-text-muted">Always on — all ballots encrypted via Fhenix CoFHE before submission</div>
                 </div>
-                <Toggle checked={true} onChange={() => {}} disabled />
+                <span className="px-2 py-1 bg-primary-accent/10 text-primary-accent text-[10px] font-bold rounded-badge uppercase">Always On</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -260,7 +306,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Hide wallet balance</div>
                   <div className="text-xs text-text-muted">Show balance as hidden by default on dashboard</div>
                 </div>
-                <Toggle checked={hideBalance} onChange={setHideBalance} />
+                <Toggle checked={hideBalance} onChange={v => set('hideBalance', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -268,7 +314,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Auto-create FHE permit</div>
                   <div className="text-xs text-text-muted">Automatically request EIP-712 permit when decrypting results</div>
                 </div>
-                <Toggle checked={autoPermit} onChange={setAutoPermit} />
+                <Toggle checked={autoPermit} onChange={v => set('autoPermit', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -276,7 +322,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Public voting history</div>
                   <div className="text-xs text-text-muted">Show which proposals you participated in (not your choices)</div>
                 </div>
-                <Toggle checked={showVoteHistory} onChange={setShowVoteHistory} />
+                <Toggle checked={showVoteHistory} onChange={v => set('showVoteHistory', v)} />
               </div>
             </div>
           </Card>
@@ -299,7 +345,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Compact proposal cards</div>
                   <div className="text-xs text-text-muted">Show proposals in a condensed list view</div>
                 </div>
-                <Toggle checked={compactMode} onChange={setCompactMode} />
+                <Toggle checked={compactMode} onChange={v => set('compactMode', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -307,7 +353,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Show quorum percentage</div>
                   <div className="text-xs text-text-muted">Display quorum as percentage alongside vote count</div>
                 </div>
-                <Toggle checked={showQuorumPercent} onChange={setShowQuorumPercent} />
+                <Toggle checked={showQuorumPercent} onChange={v => set('showQuorumPercent', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -315,7 +361,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Date format</div>
                   <div className="text-xs text-text-muted">How deadlines are displayed</div>
                 </div>
-                <Select value={dateFormat} onChange={setDateFormat} options={[
+                <Select value={dateFormat} onChange={v => set('dateFormat', v)} options={[
                   { value: 'relative', label: 'Relative (2d 5h left)' },
                   { value: 'absolute', label: 'Absolute (Mar 25, 18:00)' },
                   { value: 'both', label: 'Both' },
@@ -342,7 +388,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">New proposals</div>
                   <div className="text-xs text-text-muted">When a new proposal is created</div>
                 </div>
-                <Toggle checked={notifyNewProposal} onChange={setNotifyNewProposal} />
+                <Toggle checked={notifyNewProposal} onChange={v => set('notifyNewProposal', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -350,7 +396,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Deadline approaching</div>
                   <div className="text-xs text-text-muted">Reminder 1 hour before voting ends</div>
                 </div>
-                <Toggle checked={notifyDeadline} onChange={setNotifyDeadline} />
+                <Toggle checked={notifyDeadline} onChange={v => set('notifyDeadline', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -358,7 +404,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Results revealed</div>
                   <div className="text-xs text-text-muted">When encrypted tallies are decrypted</div>
                 </div>
-                <Toggle checked={notifyResults} onChange={setNotifyResults} />
+                <Toggle checked={notifyResults} onChange={v => set('notifyResults', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -366,7 +412,7 @@ export const Settings = () => {
                   <div className="text-sm font-bold">Member activity</div>
                   <div className="text-xs text-text-muted">When someone joins your Space</div>
                 </div>
-                <Toggle checked={notifyMembers} onChange={setNotifyMembers} />
+                <Toggle checked={notifyMembers} onChange={v => set('notifyMembers', v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -376,7 +422,7 @@ export const Settings = () => {
                   </div>
                   <div className="text-xs text-text-muted">Play sound on notifications</div>
                 </div>
-                <Toggle checked={soundEnabled} onChange={setSoundEnabled} />
+                <Toggle checked={soundEnabled} onChange={v => set('soundEnabled', v)} />
               </div>
             </div>
           </Card>
@@ -458,7 +504,7 @@ export const Settings = () => {
 
           <div className="text-center pt-4">
             <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
-              <Lock className="w-3 h-3" /> Settings are session-only and reset on refresh
+              <CheckCircle2 className="w-3 h-3 text-primary-accent" /> Settings saved automatically to your browser
             </div>
           </div>
         </div>

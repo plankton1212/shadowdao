@@ -1,130 +1,128 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useWalletClient, usePublicClient } from 'wagmi';
+
+// Module-level singleton — one CoFHE client per browser session, shared across all hooks
+let _client: any = null;
+let _sdk: any = null;
+let _initPromise: Promise<any> | null = null;
+
+async function buildClient(walletClient: any, publicClient: any): Promise<any> {
+  if (_client) return _client;
+
+  const [webSdk, coreSdk, adaptersMod, { sepolia: sepoliaChain }] = await Promise.all([
+    import('@cofhe/sdk/web'),
+    import('@cofhe/sdk'),
+    import('@cofhe/sdk/adapters'),
+    import('@cofhe/sdk/chains'),
+  ]);
+
+  _sdk = coreSdk;
+
+  const { createCofheConfig, createCofheClient } = webSdk;
+  const WagmiAdapter = adaptersMod.WagmiAdapter || (adaptersMod as any).default?.WagmiAdapter;
+
+  // Try with worker threads first (faster); fall back to single-threaded if
+  // COOP/COEP headers are missing or SharedArrayBuffer is unavailable
+  let useWorkers = typeof SharedArrayBuffer !== 'undefined';
+
+  const config = createCofheConfig({ supportedChains: [sepoliaChain], useWorkers });
+  const client = createCofheClient(config);
+
+  if (WagmiAdapter && typeof WagmiAdapter === 'function') {
+    try {
+      const adapter = await WagmiAdapter(walletClient, publicClient);
+      await client.connect(publicClient, adapter);
+    } catch {
+      if (useWorkers) {
+        // Retry without workers
+        useWorkers = false;
+        const cfg2 = createCofheConfig({ supportedChains: [sepoliaChain], useWorkers: false });
+        const c2 = createCofheClient(cfg2);
+        await c2.connect(publicClient, walletClient);
+        _client = c2;
+        return c2;
+      }
+      await client.connect(publicClient, walletClient);
+    }
+  } else {
+    await client.connect(publicClient, walletClient);
+  }
+
+  _client = client;
+  return client;
+}
 
 export function useCofhe() {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(!!_client);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const clientRef = useRef<any>(null);
-  const sdkRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!walletClient || !publicClient) return;
-    if (clientRef.current) return;
-    let cancelled = false;
+    if (!walletClient || !publicClient || _client) return;
 
-    async function tryConnect(useWorkers: boolean) {
-      const webSdk = await import('@cofhe/sdk/web');
-      const coreSdk = await import('@cofhe/sdk');
-      const adaptersMod = await import('@cofhe/sdk/adapters');
+    setIsLoading(true);
+    setError(null);
 
-      sdkRef.current = coreSdk;
+    if (!_initPromise) {
+      _initPromise = buildClient(walletClient, publicClient);
+    }
 
-      const { createCofheConfig, createCofheClient } = webSdk;
-      const WagmiAdapter = adaptersMod.WagmiAdapter || (adaptersMod as any).default?.WagmiAdapter;
-      const { sepolia: sepoliaChain } = await import('@cofhe/sdk/chains');
-
-      const config = createCofheConfig({
-        supportedChains: [sepoliaChain],
-        useWorkers,
+    _initPromise
+      .then(() => { setIsInitialized(true); setIsLoading(false); })
+      .catch((err: any) => {
+        _initPromise = null;
+        console.warn('[ShadowDAO] CoFHE SDK init failed:', err);
+        setError(err.message || 'FHE SDK init failed');
+        setIsLoading(false);
       });
-
-      const client = createCofheClient(config);
-
-      // Try WagmiAdapter first, fallback to direct connect
-      if (WagmiAdapter && typeof WagmiAdapter === 'function') {
-        try {
-          const adapter = await WagmiAdapter(walletClient as any, publicClient as any);
-          await client.connect(publicClient as any, adapter as any);
-        } catch (adapterErr: any) {
-          console.warn('[ShadowDAO] WagmiAdapter failed, trying direct connect:', adapterErr.message);
-          await client.connect(publicClient as any, walletClient as any);
-        }
-      } else {
-        await client.connect(publicClient as any, walletClient as any);
-      }
-
-      return client;
-    }
-
-    async function initCofhe() {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Workers require SharedArrayBuffer + proper COOP/COEP headers
-        // which conflict with MetaMask iframe injection — use single-threaded mode
-        const client = await tryConnect(false);
-
-        if (!cancelled) {
-          clientRef.current = client;
-          setIsInitialized(true);
-          setIsLoading(false);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          console.warn('[ShadowDAO] CoFHE SDK init failed:', err);
-          setError(err.message || 'FHE SDK init failed');
-          setIsInitialized(false);
-          setIsLoading(false);
-        }
-      }
-    }
-
-    initCofhe();
-    return () => { cancelled = true; };
   }, [walletClient, publicClient]);
 
   const initialize = useCallback(async () => {
-    if (clientRef.current) return;
+    if (_client) return;
     if (!walletClient || !publicClient) {
       throw new Error('CoFHE not initialized — connect wallet first');
     }
-    // SDK not yet ready — wait for useEffect to finish connecting
-    for (let i = 0; i < 50; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      if (clientRef.current) return;
+    if (!_initPromise) {
+      _initPromise = buildClient(walletClient, publicClient);
     }
-    throw new Error('CoFHE initialization timed out — try refreshing the page');
+    await _initPromise;
   }, [walletClient, publicClient]);
 
   const encrypt = useCallback(
     async (values: any[], onStep?: (step: string, ctx?: any) => void) => {
-      if (!clientRef.current) throw new Error('CoFHE not initialized — connect wallet first');
-      let builder = clientRef.current.encryptInputs(values);
-      if (onStep) {
-        builder = builder.onStep(onStep);
-      }
+      if (!_client) throw new Error('CoFHE not initialized — connect wallet first');
+      let builder = _client.encryptInputs(values);
+      if (onStep) builder = builder.onStep(onStep);
       return builder.execute();
     },
     []
   );
 
   const decrypt = useCallback(async (ctHash: bigint, fheType: any) => {
-    if (!clientRef.current) throw new Error('CoFHE not initialized');
-    return clientRef.current.decryptForView(ctHash, fheType).withPermit().execute();
+    if (!_client) throw new Error('CoFHE not initialized');
+    return _client.decryptForView(ctHash, fheType).withPermit().execute();
   }, []);
 
   const getOrCreateSelfPermit = useCallback(async () => {
-    if (!clientRef.current) throw new Error('CoFHE not initialized');
-    return clientRef.current.permits.getOrCreateSelfPermit();
+    if (!_client) throw new Error('CoFHE not initialized');
+    return _client.permits.getOrCreateSelfPermit();
   }, []);
 
   const removeActivePermit = useCallback(async () => {
-    if (!clientRef.current) throw new Error('CoFHE not initialized');
-    return clientRef.current.permits.removeActivePermit();
+    if (!_client) throw new Error('CoFHE not initialized');
+    return _client.permits.removeActivePermit();
   }, []);
 
-  const getEncryptable = useCallback(() => sdkRef.current?.Encryptable, []);
-  const getFheTypes = useCallback(() => sdkRef.current?.FheTypes, []);
+  const getEncryptable = useCallback(() => _sdk?.Encryptable, []);
+  const getFheTypes = useCallback(() => _sdk?.FheTypes, []);
 
   return {
     isInitialized,
     isLoading,
     error,
-    client: clientRef.current,
+    client: _client,
     initialize,
     encrypt,
     decrypt,
