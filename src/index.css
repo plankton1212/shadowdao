@@ -80,3 +80,36 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ─── Dark theme ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --color-bg-base: #0E1512;
+  --color-surface-white: #1A2420;
+  --color-surface-tinted: #1E2D27;
+  --color-surface-highlight: #243B30;
+  --color-surface-accent: #1E5C35;
+
+  --color-primary-accent: #4ACA82;
+  --color-secondary-accent: #F0F7F2;
+  --color-tertiary-accent: #8B9EFF;
+  --color-warning: #F5C84A;
+  --color-danger: #FF6B6B;
+  --color-success: #4ACA82;
+
+  --color-text-primary: #EDF5F0;
+  --color-text-secondary: #8FB8A0;
+  --color-text-muted: #4A7060;
+}
+
+[data-theme="dark"] body {
+  background: linear-gradient(165deg, #0A1210 0%, #0E1A15 30%, #111E18 60%, #0D1510 100%);
+}
+
+[data-theme="dark"] .glass-nav {
+  background: rgba(14, 21, 18, 0.95);
+  border-color: rgba(255,255,255,0.06);
+}
+
+[data-theme="dark"] .border-default {
+  border-color: rgba(255,255,255,0.08) !important;
+}

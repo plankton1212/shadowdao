@@ -726,6 +726,49 @@ const NotificationBell = () => {
   );
 };
 
+const NETWORKS = [
+  { id: 11155111, name: 'Ethereum Sepolia', short: 'Sepolia', color: '#627EEA', emoji: '⟠' },
+  { id: 8008135,  name: 'Fhenix Testnet',   short: 'Fhenix',  color: '#1A8C52', emoji: '🔒' },
+] as const;
+
+const NetworkSelector = ({ chainId, onSwitch }: { chainId?: number; onSwitch: (c: { chainId: number }) => void }) => {
+  const [open, setOpen] = useState(false);
+  const current = NETWORKS.find(n => n.id === chainId) ?? NETWORKS[0];
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-highlight rounded-pill text-xs font-bold hover:bg-surface-tinted transition-colors"
+      >
+        <span>{current.emoji}</span>
+        <span className="hidden sm:inline">{current.short}</span>
+        <ChevronDown className="w-3 h-3 text-text-muted" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-elevated border border-default overflow-hidden z-50">
+          {NETWORKS.map(net => (
+            <button
+              key={net.id}
+              onClick={() => { onSwitch({ chainId: net.id }); setOpen(false); }}
+              className={cn(
+                'w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium hover:bg-surface-tinted transition-colors',
+                net.id === chainId && 'bg-surface-highlight'
+              )}
+            >
+              <span className="text-base">{net.emoji}</span>
+              <div className="flex-1">
+                <div className="font-bold">{net.name}</div>
+                <div className="text-[10px] text-text-muted">Chain {net.id}</div>
+              </div>
+              {net.id === chainId && <CheckCircle2 className="w-4 h-4 text-primary-accent" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const AppTopBar = () => {
   const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
@@ -798,6 +841,11 @@ export const AppTopBar = () => {
             >
               Wrong Network
             </button>
+          )}
+
+          {/* Multi-chain network selector */}
+          {!wrongNetwork && (
+            <NetworkSelector chainId={chainId} onSwitch={switchChain} />
           )}
 
           {/* Notifications Bell */}

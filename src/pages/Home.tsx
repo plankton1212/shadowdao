@@ -541,8 +541,8 @@ export const Home = () => {
             {[
               { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted proposals, FHE tallying, permit verify, admin cancel/extend. 10 FHE ops.' },
               { phase: 'Wave 2', title: 'Space-Gated', status: 'Live', desc: 'Space-gated voting, ACL wiring, encrypted quorum, differential tally. 13 FHE ops.' },
-              { phase: 'Wave 3', title: 'Treasury', status: 'Next', desc: 'Encrypted DAO treasury (euint64), weighted voting (FHE.mul), solvency proofs.' },
-              { phase: 'Wave 4-5', title: 'Production', status: 'Planned', desc: 'Delegation, gasless voting (ERC-2771), analytics, SDK, multi-chain.' },
+              { phase: 'Wave 3', title: 'Treasury + Weighted', status: 'Live', desc: 'Encrypted treasury (euint32), weighted voting FHE.mul, IPFS proposals, FHE visualizer. 14 ops.' },
+              { phase: 'Wave 4-5', title: 'Full Protocol', status: 'Live', desc: 'Delegation, gasless EIP-712 meta-tx, on-chain discussion, analytics, shadowdao-sdk, PWA. 16 ops.' },
             ].map((item, i) => (
               <StaggerItem key={i}>
                 <div className="space-y-4 relative">

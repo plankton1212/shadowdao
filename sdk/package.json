@@ -1,0 +1,21 @@
+{
+  "name": "shadowdao-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for ShadowDAO — FHE-encrypted DAO governance on Fhenix CoFHE",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["shadowdao", "fhe", "fhenix", "dao", "governance", "privacy", "cofhe"],
+  "license": "MIT",
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

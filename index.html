@@ -3,12 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- SEO -->
+    <title>ShadowDAO — Private Governance Protocol powered by Fhenix FHE</title>
+    <meta name="description" content="Private on-chain DAO governance where votes are FHE-encrypted, tallied on ciphertext, and only aggregate results are ever revealed. Powered by Fhenix CoFHE on Ethereum Sepolia." />
+    <meta name="keywords" content="DAO, governance, FHE, Fhenix, privacy, voting, blockchain, Ethereum, homomorphic encryption" />
+    <meta name="author" content="ShadowDAO" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://shadowdao.vercel.app" />
+
+    <!-- OpenGraph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shadowdao.vercel.app" />
+    <meta property="og:title" content="ShadowDAO — Private Governance Protocol" />
+    <meta property="og:description" content="FHE-encrypted voting where individual votes are never revealed. Built on Fhenix CoFHE — 16 distinct FHE operations on Ethereum Sepolia." />
+    <meta property="og:image" content="https://shadowdao.vercel.app/og-image.png" />
+    <meta property="og:site_name" content="ShadowDAO" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://shadowdao.vercel.app" />
+    <meta name="twitter:title" content="ShadowDAO — Private Governance Protocol" />
+    <meta name="twitter:description" content="FHE-encrypted DAO voting. 16 FHE operations. Individual votes encrypted forever. Powered by Fhenix CoFHE." />
+    <meta name="twitter:image" content="https://shadowdao.vercel.app/og-image.png" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1A8C52" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ShadowDAO" />
+
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <title>ShadowDAO — Private Governance Protocol</title>
+    <link rel="apple-touch-icon" href="/logo.svg" />
+
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

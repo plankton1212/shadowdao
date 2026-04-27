@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   TrendingUp,
@@ -14,6 +14,11 @@ import {
   AlertCircle,
   Loader2,
   Lock,
+  Activity,
+  RefreshCw,
+  PlusCircle,
+  Shield,
+  Zap,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -21,11 +26,13 @@ import {
   ProposalSkeleton, StatSkeleton, CountUp, CategoryEmoji,
 } from '../components/UI';
 import { useAccount } from 'wagmi';
+import { usePublicClient } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
 import { useSpaces } from '../hooks/useSpaces';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { formatAddress } from '../utils';
+import { formatAddress, cn } from '../utils';
 import { formatDistanceToNow } from 'date-fns';
+import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 
 export const Dashboard = () => {
   const navigate = useNavigate();
@@ -355,25 +362,161 @@ export const Dashboard = () => {
                 </div>
 
                 {/* Treasury Preview */}
-                <Card accent className="p-5 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[#1A3A20]/70">Treasury</span>
-                    <button onClick={() => setShowBalance(!showBalance)} className="text-[#1A3A20]">
-                      {showBalance ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <div className="text-xl font-extrabold text-[#1A3A20]">
-                    {showBalance ? '🔒 Encrypted' : 'FHE Protected'}
-                  </div>
-                  <div className="text-xs text-[#1A3A20]/60 flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> euint64 balance · Coming Wave 3
-                  </div>
-                </Card>
+                <Link to="/app/treasury">
+                  <Card accent className="p-5 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#1A3A20]/70">Treasury</span>
+                      <button onClick={e => { e.preventDefault(); setShowBalance(!showBalance); }} className="text-[#1A3A20]">
+                        {showBalance ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <div className="text-xl font-extrabold text-[#1A3A20]">
+                      {showBalance ? '🔒 Encrypted' : 'FHE Protected'}
+                    </div>
+                    <div className="text-xs text-[#1A3A20]/60 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" /> euint32 balance · Wave 3
+                    </div>
+                  </Card>
+                </Link>
               </div>
             </div>
           )}
+
+          {/* Activity Feed */}
+          <ActivityFeed />
+
         </div>
       </PageWrapper>
     </AppLayout>
   );
 };
+
+// ─── Activity Feed ─────────────────────────────────────────────────────────────
+
+type ActivityEvent = {
+  type: 'VoteCast' | 'ProposalCreated' | 'ResultsRevealed' | 'ProposalCancelled';
+  proposalId: string;
+  actor?: string;
+  blockNumber: bigint;
+  txHash: string;
+};
+
+function ActivityFeed() {
+  const publicClient = usePublicClient();
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchEvents = useCallback(async () => {
+    if (!publicClient) return;
+    setLoading(true);
+    try {
+      const [voteLogs, proposalLogs, revealLogs, cancelLogs] = await Promise.all([
+        publicClient.getLogs({
+          address: SHADOWVOTE_ADDRESS,
+          event: { name: 'VoteCast', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'voter', type: 'address', indexed: true }] },
+          fromBlock: 'earliest', toBlock: 'latest',
+        }),
+        publicClient.getLogs({
+          address: SHADOWVOTE_ADDRESS,
+          event: { name: 'ProposalCreated', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'creator', type: 'address', indexed: true }, { name: 'title', type: 'string', indexed: false }, { name: 'optionCount', type: 'uint8', indexed: false }, { name: 'deadline', type: 'uint256', indexed: false }, { name: 'quorum', type: 'uint256', indexed: false }, { name: 'spaceId', type: 'uint256', indexed: false }, { name: 'spaceGated', type: 'bool', indexed: false }] },
+          fromBlock: 'earliest', toBlock: 'latest',
+        }),
+        publicClient.getLogs({
+          address: SHADOWVOTE_ADDRESS,
+          event: { name: 'ResultsRevealed', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }] },
+          fromBlock: 'earliest', toBlock: 'latest',
+        }),
+        publicClient.getLogs({
+          address: SHADOWVOTE_ADDRESS,
+          event: { name: 'ProposalCancelled', type: 'event', inputs: [{ name: 'proposalId', type: 'uint256', indexed: true }, { name: 'creator', type: 'address', indexed: true }] },
+          fromBlock: 'earliest', toBlock: 'latest',
+        }),
+      ]);
+
+      const all: ActivityEvent[] = [
+        ...voteLogs.map(l => ({ type: 'VoteCast' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).voter, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...proposalLogs.map(l => ({ type: 'ProposalCreated' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...revealLogs.map(l => ({ type: 'ResultsRevealed' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...cancelLogs.map(l => ({ type: 'ProposalCancelled' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+      ];
+
+      all.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+      setEvents(all.slice(0, 20));
+    } catch (e) {
+      console.error('Activity feed error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [publicClient]);
+
+  useEffect(() => {
+    fetchEvents();
+    timerRef.current = setInterval(fetchEvents, 30000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [fetchEvents]);
+
+  const eventConfig = {
+    VoteCast: { label: 'voted on', icon: VoteIcon, color: 'text-primary-accent', bg: 'bg-surface-highlight' },
+    ProposalCreated: { label: 'created', icon: PlusCircle, color: 'text-tertiary-accent', bg: 'bg-[#EDEFFD]' },
+    ResultsRevealed: { label: 'results revealed for', icon: Shield, color: 'text-warning', bg: 'bg-warning/10' },
+    ProposalCancelled: { label: 'cancelled', icon: AlertCircle, color: 'text-danger', bg: 'bg-danger/5' },
+  };
+
+  return (
+    <Card hover={false} className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-surface-highlight text-primary-accent rounded-xl flex items-center justify-center">
+            <Activity className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold">Activity Feed</h3>
+            <p className="text-xs text-text-muted">Live events from blockchain · auto-refresh 30s</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" className="p-2 h-auto" onClick={fetchEvents}>
+          <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+        </Button>
+      </div>
+
+      {loading && events.length === 0 ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-primary-accent" />
+        </div>
+      ) : events.length === 0 ? (
+        <div className="text-center py-8 text-text-muted text-sm">No on-chain events yet</div>
+      ) : (
+        <div className="space-y-2">
+          {events.map((ev, i) => {
+            const cfg = eventConfig[ev.type];
+            const Icon = cfg.icon;
+            return (
+              <div key={`${ev.txHash}-${i}`} className="flex items-center gap-3 py-2.5 border-b border-default last:border-0">
+                <div className={cn('w-8 h-8 rounded-full flex items-center justify-center shrink-0', cfg.bg)}>
+                  <Icon className={cn('w-4 h-4', cfg.color)} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm truncate">
+                    {ev.actor && (
+                      <span className="font-mono font-bold">{formatAddress(ev.actor)}</span>
+                    )}
+                    {' '}<span className="text-text-secondary">{cfg.label}</span>{' '}
+                    <Link to={`/app/proposal/${ev.proposalId}`} className="font-bold text-primary-accent hover:underline">
+                      Proposal #{ev.proposalId}
+                    </Link>
+                  </div>
+                  <div className="text-xs text-text-muted">Block #{ev.blockNumber.toString()}</div>
+                </div>
+                <a href={`https://sepolia.etherscan.io/tx/${ev.txHash}`} target="_blank" rel="noopener noreferrer"
+                  className="text-text-muted hover:text-text-primary shrink-0">
+                  <Zap className="w-3 h-3" />
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}

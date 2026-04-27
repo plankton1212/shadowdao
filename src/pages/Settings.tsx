@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wallet, Shield, Bell, Key, Copy, Lock, AlertCircle,
   ExternalLink, Globe, Vote as VoteIcon, Eye, EyeOff,
-  CheckCircle2, Moon, Sun, Clock, Gauge, Volume2, VolumeX,
+  CheckCircle2, Moon, Sun, Clock, Gauge, Volume2, VolumeX, Palette,
 } from 'lucide-react';
 import { Card, AppLayout, PageWrapper, Button } from '../components/UI';
 import { useAccount, useDisconnect, useSwitchChain, useBalance } from 'wagmi';
@@ -48,6 +48,14 @@ export const Settings = () => {
 
   const [showBalance, setShowBalance] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Theme
+  const [darkMode, setDarkMode] = useState(() => document.documentElement.getAttribute('data-theme') === 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('shadowdao-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   // Voting preferences
   const [autoReveal, setAutoReveal] = useState(true);
@@ -370,6 +378,54 @@ export const Settings = () => {
                 </div>
                 <Toggle checked={soundEnabled} onChange={setSoundEnabled} />
               </div>
+            </div>
+          </Card>
+
+          {/* Theme */}
+          <Card hover={false} className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-surface-highlight text-primary-accent rounded-full flex items-center justify-center">
+                <Palette className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Theme</h3>
+                <p className="text-xs text-text-muted">Visual appearance</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-sm font-bold flex items-center gap-2">
+                  {darkMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                  {darkMode ? 'Dark mode' : 'Light mode'}
+                </div>
+                <div className="text-xs text-text-muted">Saved in browser, persists across sessions</div>
+              </div>
+              <Toggle checked={darkMode} onChange={setDarkMode} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Light', value: false, bg: 'bg-[#F0F7F2]', text: 'text-[#161616]', border: '' },
+                { label: 'Dark', value: true, bg: 'bg-[#0E1512]', text: 'text-[#EDF5F0]', border: '' },
+              ].map(opt => (
+                <button
+                  key={opt.label}
+                  onClick={() => setDarkMode(opt.value)}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-left',
+                    opt.bg,
+                    darkMode === opt.value ? 'border-primary-accent' : 'border-transparent'
+                  )}
+                >
+                  <div className={cn('text-sm font-bold', opt.text)}>{opt.label}</div>
+                  <div className="flex gap-1 mt-2">
+                    {[opt.value ? '#4ACA82' : '#1A8C52', opt.value ? '#1A2420' : '#FFFFFF', opt.value ? '#0E1512' : '#F0F7F2'].map(c => (
+                      <div key={c} className="w-4 h-4 rounded-full border border-white/20" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                </button>
+              ))}
             </div>
           </Card>
 

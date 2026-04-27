@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -17,6 +17,8 @@ import {
   CalendarPlus,
   Eye,
   Download,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar, Confetti, FheBadge, CategoryEmoji } from '../components/UI';
@@ -27,7 +29,8 @@ import { useReveal } from '../hooks/useReveal';
 import { useProposalAdmin } from '../hooks/useProposalAdmin';
 import { useVerifyVote } from '../hooks/useVerifyVote';
 import { useSpaces } from '../hooks/useSpaces';
-import { etherscanTx, SHADOWVOTE_ADDRESS } from '../config/contract';
+import { etherscanTx, SHADOWVOTE_ADDRESS, SHADOWVOTEV2_ADDRESS, SHADOWVOTEV2_ABI } from '../config/contract';
+import { usePublicClient, useWalletClient } from 'wagmi';
 import { cn, formatAddress } from '../utils';
 
 function useCountdown(deadline: Date) {
@@ -764,8 +767,258 @@ export const ProposalDetail = () => {
               </div>
             </Card>
           )}
+
+          {/* Discussion */}
+          <DiscussionSection proposalId={proposal.id} />
+
         </div>
       </PageWrapper>
     </AppLayout>
   );
 };
+
+// ─── Discussion component ─────────────────────────────────────────────────────
+
+import { pinCommentToIPFS, fetchCommentFromIPFS, cidToIpfsUrl } from '../utils/ipfs';
+
+type OnChainComment = { author: string; ipfsHash: string; blockNumber: bigint };
+type ResolvedComment = OnChainComment & { text: string | null; loading: boolean };
+
+const V2_DEPLOYED = true; // contracts deployed on Sepolia
+
+function DiscussionSection({ proposalId }: { proposalId: bigint }) {
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+
+  const [comments, setComments] = useState<ResolvedComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [postStep, setPostStep] = useState<'idle' | 'pinning' | 'onchain'>('idle');
+
+  // Fetch on-chain comment records, then resolve IPFS content for each
+  const fetchComments = useCallback(async () => {
+    if (!publicClient || !V2_DEPLOYED) return;
+    setLoadingComments(true);
+    try {
+      const count = await publicClient.readContract({
+        address: SHADOWVOTEV2_ADDRESS,
+        abi: SHADOWVOTEV2_ABI,
+        functionName: 'getCommentCount',
+        args: [proposalId],
+      } as any) as bigint;
+
+      // Load on-chain records first (show immediately with loading state)
+      const onChain: OnChainComment[] = [];
+      for (let i = 0n; i < count; i++) {
+        const [author, ipfsHash, blockNumber] = await publicClient.readContract({
+          address: SHADOWVOTEV2_ADDRESS,
+          abi: SHADOWVOTEV2_ABI,
+          functionName: 'getComment',
+          args: [proposalId, i],
+        } as any) as [string, string, bigint];
+        onChain.push({ author, ipfsHash, blockNumber });
+      }
+
+      // Show records immediately with loading state for text
+      setComments(onChain.map(c => ({ ...c, text: null, loading: true })));
+      setLoadingComments(false);
+
+      // Resolve IPFS content in parallel (visible to all users via public IPFS gateways)
+      const resolved = await Promise.all(
+        onChain.map(async (c) => {
+          const text = await fetchCommentFromIPFS(c.ipfsHash);
+          return { ...c, text, loading: false };
+        })
+      );
+      setComments(resolved);
+    } catch (e) {
+      console.error('Failed to fetch comments:', e);
+      setLoadingComments(false);
+    }
+  }, [publicClient, proposalId]);
+
+  useEffect(() => { fetchComments(); }, [fetchComments]);
+
+  const handlePost = async () => {
+    if (!walletClient || !commentText.trim() || !publicClient || !address) return;
+    setPosting(true);
+    setPostError(null);
+    try {
+      const text = commentText.trim();
+
+      // Step 1: Pin content to Pinata IPFS → publicly accessible by anyone via IPFS gateway
+      setPostStep('pinning');
+      const { cid, bytes32 } = await pinCommentToIPFS({
+        text,
+        author: address,
+        proposalId: proposalId.toString(),
+      });
+
+      // Step 2: Store IPFS CID (as bytes32 SHA-256 digest) on-chain
+      setPostStep('onchain');
+      const hash = await walletClient.writeContract({
+        address: SHADOWVOTEV2_ADDRESS,
+        abi: SHADOWVOTEV2_ABI,
+        functionName: 'postComment',
+        args: [proposalId, bytes32],
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      setCommentText('');
+      setPostStep('idle');
+      await fetchComments();
+    } catch (e: any) {
+      setPostError(e.shortMessage ?? e.message);
+      setPostStep('idle');
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const postLabel =
+    postStep === 'pinning' ? 'Pinning to IPFS...' :
+    postStep === 'onchain' ? 'Storing on-chain...' :
+    'Post';
+
+  return (
+    <Card hover={false} className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-surface-highlight text-primary-accent rounded-xl flex items-center justify-center">
+          <MessageSquare className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="font-bold">Discussion</h3>
+          <p className="text-xs text-text-muted">
+            {V2_DEPLOYED
+              ? 'Comments pinned to IPFS (Pinata) · CID stored on-chain · visible to all users'
+              : 'Available on ShadowVoteV2 proposals'}
+          </p>
+        </div>
+        {comments.length > 0 && (
+          <span className="ml-auto px-2 py-0.5 bg-surface-highlight text-xs font-bold rounded-badge">
+            {comments.length}
+          </span>
+        )}
+      </div>
+
+      {!V2_DEPLOYED && (
+        <div className="text-center py-6 text-text-muted text-sm space-y-2">
+          <MessageSquare className="w-8 h-8 mx-auto opacity-30" />
+          <p>Discussion is available for proposals created on <strong>ShadowVoteV2</strong>.</p>
+          <p className="text-xs">Run <code className="font-mono bg-surface-tinted px-1 rounded">npm run deploy:v2</code> to enable.</p>
+        </div>
+      )}
+
+      {/* Pinata configured server-side — no client-side check needed */}
+
+      {V2_DEPLOYED && (
+        <>
+          {/* Comment list */}
+          {loadingComments ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-accent" />
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="text-center py-6 text-text-muted text-sm">
+              No comments yet — be the first to start the discussion
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {comments.map((c, i) => (
+                <div key={i} className="flex gap-3 p-3 bg-bg-base rounded-xl">
+                  <div className="w-8 h-8 bg-surface-highlight rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold">{c.author.slice(2, 4).toUpperCase()}</span>
+                  </div>
+                  <div className="flex-1 space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 text-xs text-text-muted flex-wrap">
+                      <span className="font-mono font-bold text-text-primary">{formatAddress(c.author)}</span>
+                      <span>·</span>
+                      <span>Block #{c.blockNumber.toString()}</span>
+                      {c.text !== null && (
+                        <span className="px-1.5 py-0.5 bg-surface-highlight text-primary-accent rounded-badge text-[9px] font-bold">
+                          IPFS
+                        </span>
+                      )}
+                    </div>
+                    {c.loading ? (
+                      <div className="flex items-center gap-2 text-xs text-text-muted">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Fetching from IPFS...
+                      </div>
+                    ) : c.text !== null ? (
+                      <div className="text-sm text-text-secondary leading-relaxed">{c.text}</div>
+                    ) : (
+                      <div className="break-all space-y-1">
+                        <div className="text-sm text-text-secondary">
+                          <Lock className="w-3 h-3 inline mr-1 text-primary-accent" />
+                          <code className="font-mono text-xs">{c.ipfsHash.slice(0, 20)}...</code>
+                        </div>
+                        {cidToIpfsUrl(c.ipfsHash) && (
+                          <a
+                            href={cidToIpfsUrl(c.ipfsHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-primary-accent underline hover:opacity-80"
+                          >
+                            View on IPFS ↗
+                          </a>
+                        )}
+                        <div className="text-[10px] text-text-muted">
+                          Gateway timeout — content is pinned on IPFS, reload to retry
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Post comment */}
+          {address && (
+            <div className="space-y-3 pt-3 border-t border-default">
+              <textarea
+                className="w-full px-4 py-3 rounded-input border border-default bg-bg-base text-sm resize-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent outline-none transition-colors"
+                rows={3}
+                placeholder="Write a comment... (pinned to IPFS, CID stored on-chain)"
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                disabled={posting}
+              />
+              {postError && (
+                <div className="flex gap-2 text-xs text-danger">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{postError}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-text-muted flex items-center gap-1 min-w-0">
+                  {postStep === 'pinning' && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
+                  {postStep === 'onchain' && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
+                  {postStep === 'idle' && <Lock className="w-3 h-3 shrink-0" />}
+                  <span className="truncate">
+                    {postStep === 'pinning' && 'Pinning to Pinata IPFS...'}
+                    {postStep === 'onchain' && 'Writing CID on-chain...'}
+                    {postStep === 'idle' && 'Text → Pinata IPFS → bytes32 CID on-chain'}
+                  </span>
+                </div>
+                <Button
+                  variant="accent" size="sm"
+                  onClick={handlePost}
+                  disabled={!commentText.trim() || posting}
+                  className="gap-2 shrink-0"
+                >
+                  <Send className="w-4 h-4" />
+                  {posting ? postLabel : 'Post'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}

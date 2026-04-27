@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShadowDAO — Offline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      background: linear-gradient(165deg, #EFF8F1 0%, #E4F1E8 30%, #F5F9F0 60%, #FAFCFA 100%);
+      color: #161616;
+      padding: 2rem;
+    }
+    .card {
+      max-width: 400px;
+      width: 100%;
+      background: white;
+      border-radius: 24px;
+      padding: 3rem 2rem;
+      text-align: center;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.06);
+    }
+    .icon {
+      width: 80px;
+      height: 80px;
+      background: #E8F5E0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 2rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.75rem; }
+    p { color: #5A6B5E; font-size: 0.875rem; line-height: 1.6; margin-bottom: 1.5rem; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #E8F5E0;
+      color: #1A8C52;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+    }
+    button {
+      margin-top: 1.5rem;
+      background: #1A8C52;
+      color: white;
+      border: none;
+      padding: 0.875rem 2rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+    }
+    .mono { font-family: monospace; font-size: 0.75rem; color: #9CA89E; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🔒</div>
+    <h1>You're offline</h1>
+    <p>ShadowDAO requires a network connection to read blockchain data. Connect to the internet to continue voting with Fhenix FHE.</p>
+    <div class="badge">
+      <span>FHE votes remain encrypted</span>
+    </div>
+    <button onclick="window.location.reload()">Retry connection</button>
+    <div class="mono">CoFHE coprocessor unreachable · cached state shown</div>
+  </div>
+</body>
+</html>

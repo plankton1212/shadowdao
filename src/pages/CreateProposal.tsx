@@ -17,7 +17,7 @@ import { etherscanTx } from '../config/contract';
 export const CreateProposal = () => {
   const navigate = useNavigate();
   const { address } = useAccount();
-  const { createProposal, deployState, txHash, proposalId, error, reset } = useCreateProposal();
+  const { createProposal, deployState, txHash, proposalId, error, reset, useV2, setUseV2, v2Available } = useCreateProposal();
   const { spaces, loading: spacesLoading, getUserSpaceIds } = useSpaces();
 
   const [step, setStep] = useState(1);
@@ -44,11 +44,13 @@ export const CreateProposal = () => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    ipfsCid: '',            // IPFS CID or URL — stored as bytes32 on V2
     options: ['', ''],
     durationMinutes: 4320,
     customDate: '',
     quorum: 10,
-    spaceId: null as bigint | null,   // null = global (open to all)
+    weighted: false,        // V2 only: FHE.mul weighted voting
+    spaceId: null as bigint | null,
     spaceGated: false,
   });
 
@@ -98,6 +100,15 @@ export const CreateProposal = () => {
     if (deadlineTimestamp <= nowSec) { setDeployError('Deadline must be in the future'); return; }
     if (formData.quorum < 1) { setDeployError('Quorum must be at least 1'); return; }
 
+    // Build bytes32 description hash from IPFS CID (if provided)
+    let descriptionHash: `0x${string}` = '0x0000000000000000000000000000000000000000000000000000000000000000';
+    if (formData.ipfsCid.trim()) {
+      const cid = formData.ipfsCid.trim();
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(cid.slice(0, 32).padEnd(32, '\0'));
+      descriptionHash = ('0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
+    }
+
     await createProposal(
       title,
       validOptions.length,
@@ -105,6 +116,8 @@ export const CreateProposal = () => {
       formData.quorum,
       formData.spaceGated && formData.spaceId !== null ? formData.spaceId : 0n,
       formData.spaceGated && formData.spaceId !== null,
+      descriptionHash,
+      formData.weighted,
     );
   };
 
@@ -166,6 +179,32 @@ export const CreateProposal = () => {
                 {/* ── Step 1: Details ── */}
                 {step === 1 && (
                   <Card hover={false} className="space-y-6">
+                    {/* Contract version selector */}
+                    {v2Available && (
+                      <div className="flex items-center justify-between p-3 bg-surface-highlight rounded-xl">
+                        <div className="space-y-0.5">
+                          <div className="text-sm font-bold flex items-center gap-2">
+                            <Badge variant={useV2 ? 'success' : 'default'}>{useV2 ? 'ShadowVoteV2' : 'ShadowVote V1'}</Badge>
+                          </div>
+                          <div className="text-xs text-text-muted">
+                            {useV2 ? 'Weighted voting + IPFS desc + discussion + gasless' : 'Classic FHE voting'}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setUseV2(!useV2)}
+                          className={cn(
+                            'relative w-12 h-7 rounded-full transition-colors shrink-0',
+                            useV2 ? 'bg-primary-accent' : 'bg-bg-base border border-default'
+                          )}
+                        >
+                          <div className={cn(
+                            'absolute top-[3px] w-5 h-5 bg-white rounded-full shadow transition-transform',
+                            useV2 ? 'translate-x-[22px]' : 'translate-x-[3px]'
+                          )} />
+                        </button>
+                      </div>
+                    )}
+
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-sm font-bold text-text-secondary">Proposal Title</label>
@@ -178,15 +217,35 @@ export const CreateProposal = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-bold text-text-secondary">Description <span className="font-normal text-text-muted">(optional)</span></label>
+                        <label className="text-sm font-bold text-text-secondary">Description <span className="font-normal text-text-muted">(optional, shown in proposal detail)</span></label>
                         <textarea
                           placeholder="Provide context for your proposal..."
-                          rows={4}
+                          rows={3}
                           value={formData.description}
                           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                           className="w-full px-4 py-3 rounded-input border border-default focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent outline-none transition-all resize-none"
                         />
                       </div>
+
+                      {/* V2 only: IPFS CID */}
+                      {useV2 && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-bold text-text-secondary flex items-center gap-2">
+                            IPFS Description Hash
+                            <span className="font-normal text-text-muted">(optional, V2 only)</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Qm... or bafyrei... (IPFS CID of full proposal text)"
+                            value={formData.ipfsCid}
+                            onChange={(e) => setFormData({ ...formData, ipfsCid: e.target.value })}
+                            className="w-full px-4 py-3 rounded-input border border-default focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent outline-none transition-all font-mono text-sm"
+                          />
+                          <div className="text-xs text-text-muted">
+                            CID encoded as bytes32 and stored on-chain — fetch content from ipfs.io at any time
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <Button onClick={() => setStep(2)} disabled={!formData.title.trim()} className="w-full gap-2">
                       Next <ArrowRight className="w-4 h-4" />
@@ -443,6 +502,33 @@ export const CreateProposal = () => {
                         </div>
                         <p className="text-[10px] text-text-muted">Minimum votes required for a valid result</p>
                       </div>
+
+                      {/* V2 only: Weighted voting toggle */}
+                      {useV2 && (
+                        <div className="flex items-center justify-between p-4 bg-surface-tinted rounded-xl border border-default">
+                          <div className="space-y-0.5">
+                            <div className="text-sm font-bold flex items-center gap-2">
+                              Weighted Voting
+                              <Badge variant="info" className="text-[10px]">V2 · FHE.mul</Badge>
+                            </div>
+                            <div className="text-xs text-text-muted">
+                              Votes multiplied by encrypted power per address (set by admin via setVotingPower)
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setFormData(f => ({ ...f, weighted: !f.weighted }))}
+                            className={cn(
+                              'relative w-12 h-7 rounded-full transition-colors shrink-0',
+                              formData.weighted ? 'bg-tertiary-accent' : 'bg-bg-base border border-default'
+                            )}
+                          >
+                            <div className={cn(
+                              'absolute top-[3px] w-5 h-5 bg-white rounded-full shadow transition-transform',
+                              formData.weighted ? 'translate-x-[22px]' : 'translate-x-[3px]'
+                            )} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-4">
                       <Button variant="secondary" onClick={() => setStep(3)} className="flex-1">Back</Button>
@@ -461,6 +547,11 @@ export const CreateProposal = () => {
                           <div className="text-xs text-text-muted uppercase font-bold mb-1">Title</div>
                           <div className="font-bold text-lg">{formData.title}</div>
                           {formData.description && <p className="text-sm text-text-secondary mt-1">{formData.description}</p>}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <Badge variant={useV2 ? 'success' : 'default'}>{useV2 ? 'ShadowVoteV2' : 'ShadowVote V1'}</Badge>
+                            {formData.weighted && <Badge variant="info">Weighted (FHE.mul)</Badge>}
+                            {formData.ipfsCid && <Badge variant="default">IPFS CID set</Badge>}
+                          </div>
                         </div>
 
                         {/* Space info */}

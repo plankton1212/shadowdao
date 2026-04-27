@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2, Lock } from 'lucide-react';
+import { Search, Vote as VoteIcon, Users, ArrowRight, Loader2, Lock, SlidersHorizontal, X, CalendarDays, ArrowUpDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, ProposalSkeleton, CategoryEmoji } from '../components/UI';
 import { useProposals, ProposalStatus } from '../hooks/useProposals';
 import { useSpaces, Space } from '../hooks/useSpaces';
 import { cn } from '../utils';
 import { formatDistanceToNow } from 'date-fns';
+import { CATEGORY_LABELS } from '../config/contract';
+
+type SortKey = 'newest' | 'oldest' | 'most_votes' | 'deadline_soonest';
+type DateRange = 'any' | '1d' | '7d' | '30d';
 
 export const Proposals = () => {
   const navigate = useNavigate();
@@ -15,73 +19,171 @@ export const Proposals = () => {
   const [filter, setFilter] = useState<ProposalStatus | 'ALL'>('ALL');
   const [spaceFilter, setSpaceFilter] = useState<bigint | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('newest');
+  const [dateRange, setDateRange] = useState<DateRange>('any');
 
   const spaceMap = new Map<string, Space>(spaces.map((s) => [s.id.toString(), s]));
 
-  const filteredProposals = proposals.filter((p) => {
-    const matchesFilter = filter === 'ALL' || p.status === filter;
-    const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase());
-    const matchesSpace = spaceFilter === 'ALL' || (p.spaceGated && p.spaceId === spaceFilter);
-    return matchesFilter && matchesSearch && matchesSpace;
-  });
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const daySeconds = 86400n;
+
+  const filteredProposals = useMemo(() => {
+    let list = proposals.filter((p) => {
+      const matchesFilter = filter === 'ALL' || p.status === filter;
+      const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase());
+      const matchesSpace = spaceFilter === 'ALL' || (p.spaceGated && p.spaceId === spaceFilter);
+      return matchesFilter && matchesSearch && matchesSpace;
+    });
+
+    // Sort
+    list = [...list].sort((a, b) => {
+      if (sortKey === 'newest') return Number(b.id - a.id);
+      if (sortKey === 'oldest') return Number(a.id - b.id);
+      if (sortKey === 'most_votes') return Number(b.voterCount - a.voterCount);
+      if (sortKey === 'deadline_soonest') return Number(a.deadline - b.deadline);
+      return 0;
+    });
+
+    return list;
+  }, [proposals, filter, search, spaceFilter, sortKey]);
+
+  const activeFilterCount = [
+    filter !== 'ALL',
+    spaceFilter !== 'ALL',
+    sortKey !== 'newest',
+    dateRange !== 'any',
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setFilter('ALL');
+    setSpaceFilter('ALL');
+    setSortKey('newest');
+    setDateRange('any');
+    setSearch('');
+  };
 
   return (
     <AppLayout>
       <PageWrapper>
         <div className="space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <h2 className="text-3xl font-bold">Proposals</h2>
-            <div className="flex flex-col gap-3 w-full md:w-auto">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                  <input
-                    type="text"
-                    placeholder="Search proposals..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-input border border-default bg-white focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all"
-                  />
-                </div>
-                {/* Space filter */}
-                {spaces.length > 0 && (
-                  <select
-                    value={spaceFilter === 'ALL' ? 'ALL' : spaceFilter.toString()}
-                    onChange={(e) => setSpaceFilter(e.target.value === 'ALL' ? 'ALL' : BigInt(e.target.value))}
-                    className="px-3 py-2.5 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all cursor-pointer"
-                  >
-                    <option value="ALL">All Spaces</option>
-                    {spaces.map((s) => (
-                      <option key={s.id.toString()} value={s.id.toString()}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl font-bold">Proposals</h2>
+                <span className="px-2 py-0.5 bg-surface-highlight text-xs font-bold rounded-badge text-text-muted">
+                  {filteredProposals.length}
+                </span>
               </div>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                {([
-                  { key: 'ALL', label: 'Any', color: '' },
-                  { key: 'VOTING', label: 'Active', color: 'bg-primary-accent' },
-                  { key: 'ENDED', label: 'Pending Reveal', color: 'bg-warning' },
-                  { key: 'REVEALED', label: 'Closed', color: 'bg-text-muted' },
-                ] as const).map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setFilter(f.key as any)}
-                    className={cn(
-                      'px-4 py-2 rounded-pill text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
-                      filter === f.key
-                        ? 'bg-secondary-accent text-white shadow-sm'
-                        : 'bg-white text-text-secondary border border-default hover:bg-surface-tinted'
-                    )}
-                  >
-                    {f.color && <span className={cn('w-2 h-2 rounded-full', f.color)} />}
-                    {f.label}
+              <div className="flex gap-2">
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-pill text-xs font-bold text-danger bg-danger/5 hover:bg-danger/10 transition-colors">
+                    <X className="w-3 h-3" /> Clear ({activeFilterCount})
                   </button>
-                ))}
+                )}
+                <button onClick={() => setShowAdvanced(!showAdvanced)}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-pill text-sm font-bold transition-all border',
+                    showAdvanced ? 'bg-secondary-accent text-white border-secondary-accent' : 'bg-white text-text-secondary border-default hover:bg-surface-tinted'
+                  )}>
+                  <SlidersHorizontal className="w-4 h-4" />
+                  Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+                </button>
               </div>
             </div>
+
+            {/* Search bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Search proposals by title..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-input border border-default bg-white focus:outline-none focus:ring-2 focus:ring-primary-accent/20 focus:border-primary-accent transition-all"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2">
+                  <X className="w-4 h-4 text-text-muted hover:text-text-primary" />
+                </button>
+              )}
+            </div>
+
+            {/* Status pills */}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              {([
+                { key: 'ALL', label: 'All', color: '' },
+                { key: 'VOTING', label: 'Active', color: 'bg-primary-accent' },
+                { key: 'ENDED', label: 'Pending Reveal', color: 'bg-warning' },
+                { key: 'REVEALED', label: 'Closed', color: 'bg-text-muted' },
+                { key: 'CANCELLED', label: 'Cancelled', color: 'bg-danger' },
+              ] as const).map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key as any)}
+                  className={cn(
+                    'px-4 py-2 rounded-pill text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
+                    filter === f.key
+                      ? 'bg-secondary-accent text-white shadow-sm'
+                      : 'bg-white text-text-secondary border border-default hover:bg-surface-tinted'
+                  )}
+                >
+                  {f.color && <span className={cn('w-2 h-2 rounded-full', f.color)} />}
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Advanced filters panel */}
+            {showAdvanced && (
+              <div className="p-4 bg-surface-tinted rounded-xl border border-default grid grid-cols-2 md:grid-cols-3 gap-4">
+                {/* Space filter */}
+                {spaces.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-text-muted uppercase tracking-wide">Space</label>
+                    <select
+                      value={spaceFilter === 'ALL' ? 'ALL' : spaceFilter.toString()}
+                      onChange={(e) => setSpaceFilter(e.target.value === 'ALL' ? 'ALL' : BigInt(e.target.value))}
+                      className="w-full px-3 py-2 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none cursor-pointer"
+                    >
+                      <option value="ALL">All Spaces</option>
+                      {spaces.map((s) => (
+                        <option key={s.id.toString()} value={s.id.toString()}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Sort */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wide flex items-center gap-1">
+                    <ArrowUpDown className="w-3 h-3" /> Sort by
+                  </label>
+                  <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
+                    className="w-full px-3 py-2 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none cursor-pointer">
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="most_votes">Most votes</option>
+                    <option value="deadline_soonest">Deadline soonest</option>
+                  </select>
+                </div>
+
+                {/* Date range */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wide flex items-center gap-1">
+                    <CalendarDays className="w-3 h-3" /> Created
+                  </label>
+                  <select value={dateRange} onChange={e => setDateRange(e.target.value as DateRange)}
+                    className="w-full px-3 py-2 rounded-input border border-default bg-white text-sm text-text-secondary focus:outline-none cursor-pointer">
+                    <option value="any">Any time</option>
+                    <option value="1d">Last 24h</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d">Last 30 days</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {loading ? (
