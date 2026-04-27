@@ -19,12 +19,14 @@ import {
   Download,
   MessageSquare,
   Send,
+  Zap,
 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Badge, StatusBadge, AppLayout, PageWrapper, Button, QuorumBar, Confetti, FheBadge, CategoryEmoji } from '../components/UI';
 import { useAccount } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
 import { useVote } from '../hooks/useVote';
+import { useGaslessVote } from '../hooks/useGaslessVote';
 import { useReveal } from '../hooks/useReveal';
 import { useProposalAdmin } from '../hooks/useProposalAdmin';
 import { useVerifyVote } from '../hooks/useVerifyVote';
@@ -61,6 +63,7 @@ export const ProposalDetail = () => {
   const { address } = useAccount();
   const { proposals, loading, checkHasVoted, refetch } = useProposals();
   const { castVote, voteState, txHash, error: voteError, reset: resetVote } = useVote();
+  const { gaslessVote, state: gaslessState, txHash: gaslessTxHash, error: gaslessError, reset: resetGasless } = useGaslessVote();
   const { revealResults, fetchDecryptedResults, clearDecryptError, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
   const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError, reset: resetVerify } = useVerifyVote();
@@ -75,6 +78,7 @@ export const ProposalDetail = () => {
   const [isVoting, setIsVoting] = useState(false);
   const isVotingRef = useRef(false); // synchronous guard against double-click
   const [showConfetti, setShowConfetti] = useState(false);
+  const [useGasless, setUseGasless] = useState(false);
 
   // Validate URL param before BigInt conversion — BigInt('abc') throws SyntaxError
   const proposalId: bigint | null = (() => {
@@ -166,6 +170,23 @@ export const ProposalDetail = () => {
     setIsVoting(true);
     try {
       const success = await castVote(proposalId!, selectedOption);
+      if (success) {
+        setHasVoted(true);
+        setShowConfetti(true);
+        await refetch();
+      }
+    } finally {
+      isVotingRef.current = false;
+      setIsVoting(false);
+    }
+  };
+
+  const handleGaslessVote = async () => {
+    if (selectedOption === null || isVotingRef.current) return;
+    isVotingRef.current = true;
+    setIsVoting(true);
+    try {
+      const success = await gaslessVote(proposalId!, selectedOption);
       if (success) {
         setHasVoted(true);
         setShowConfetti(true);
@@ -413,7 +434,31 @@ export const ProposalDetail = () => {
           {/* Voting Section */}
           {canVote && (
             <Card hover={false} className="space-y-6">
-              <h3 className="text-xl font-bold">Cast Your Vote</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Cast Your Vote</h3>
+                {/* Gasless toggle */}
+                <button
+                  onClick={() => setUseGasless(g => !g)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-badge text-xs font-bold border transition-all',
+                    useGasless
+                      ? 'bg-tertiary-accent/10 border-tertiary-accent/30 text-tertiary-accent'
+                      : 'bg-surface-highlight border-default text-text-muted hover:text-text-primary'
+                  )}
+                  title="Gasless voting — you sign, relayer pays gas (EIP-712 meta-tx)"
+                >
+                  <Zap className="w-3 h-3" />
+                  {useGasless ? 'Gasless ON' : 'Gasless OFF'}
+                </button>
+              </div>
+
+              {useGasless && (
+                <div className="p-3 bg-tertiary-accent/5 border border-tertiary-accent/20 rounded-xl text-xs text-tertiary-accent flex items-start gap-2">
+                  <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>You sign an EIP-712 message — the relayer submits the transaction and pays gas. Your vote is still FHE-encrypted before signing.</span>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {optionLabels.map((option, i) => (
                   <button
@@ -438,8 +483,13 @@ export const ProposalDetail = () => {
                   </button>
                 ))}
               </div>
-              <Button onClick={handleVote} disabled={selectedOption === null || isVoting} className="w-full h-14 text-lg gap-2">
-                <Lock className="w-5 h-5" /> Encrypt & Submit Vote
+              <Button
+                onClick={useGasless ? handleGaslessVote : handleVote}
+                disabled={selectedOption === null || isVoting}
+                className="w-full h-14 text-lg gap-2"
+              >
+                {useGasless ? <Zap className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                {useGasless ? 'Sign & Submit (Gasless)' : 'Encrypt & Submit Vote'}
               </Button>
             </Card>
           )}
@@ -535,6 +585,55 @@ export const ProposalDetail = () => {
             </Card>
           )}
 
+          {/* Gasless vote progress */}
+          {gaslessState !== 'idle' && gaslessState !== 'success' && gaslessState !== 'error' && (
+            <Card hover={false} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Submitting Gasless Ballot</h3>
+                <FheBadge op="EIP-712 meta-tx" />
+              </div>
+              <div className="space-y-3">
+                {([
+                  { id: 'initializing', label: 'Initializing FHE engine', sub: 'CoFHE WASM worker + WagmiAdapter' },
+                  { id: 'encrypting', label: 'Encrypting your ballot', sub: 'Encryptable.uint32 → ZK proof' },
+                  { id: 'signing', label: 'Signing EIP-712 message', sub: 'MetaMask typed-data signature — no gas needed' },
+                  { id: 'relaying', label: 'Relayer submitting on-chain', sub: 'voteWithSignature() — relayer pays gas' },
+                ] as const).map((step) => {
+                  const states = ['initializing', 'encrypting', 'signing', 'relaying'] as const;
+                  const currentIdx = states.indexOf(gaslessState as any);
+                  const stepIdx = states.indexOf(step.id);
+                  const isDone = stepIdx < currentIdx;
+                  const isActive = gaslessState === step.id;
+                  return (
+                    <div key={step.id} className={cn('flex items-start gap-3', !isDone && !isActive && 'opacity-40')}>
+                      <div className={cn('w-7 h-7 rounded-full flex items-center justify-center shrink-0',
+                        isDone ? 'bg-primary-accent text-white' : isActive ? 'bg-surface-highlight text-tertiary-accent ring-2 ring-tertiary-accent/30' : 'bg-bg-base text-text-muted'
+                      )}>
+                        {isDone ? <CheckCircle2 className="w-3.5 h-3.5" /> : isActive ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <div className="w-1.5 h-1.5 rounded-full bg-text-muted" />}
+                      </div>
+                      <div>
+                        <div className={cn('text-sm font-semibold', isActive ? 'text-text-primary' : 'text-text-muted')}>{step.label}</div>
+                        {(isDone || isActive) && <div className="text-xs text-text-muted mt-0.5">{step.sub}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Gasless vote error */}
+          {gaslessState === 'error' && gaslessError && (
+            <Card hover={false} className="bg-danger/5 border-danger/20 space-y-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-danger" />
+                <h3 className="text-lg font-bold text-danger">Gasless Vote Failed</h3>
+              </div>
+              <p className="text-sm text-text-secondary">{gaslessError}</p>
+              <Button variant="outline" size="sm" onClick={resetGasless}>Try Again</Button>
+            </Card>
+          )}
+
           {/* Vote Error */}
           {voteState === 'error' && voteError && (
             <Card hover={false} className="bg-danger/5 border-danger/20 space-y-4">
@@ -550,7 +649,7 @@ export const ProposalDetail = () => {
           )}
 
           {/* Success State */}
-          {(hasVoted || voteState === 'success') && proposal.status === 'VOTING' && (
+          {(hasVoted || voteState === 'success' || gaslessState === 'success') && proposal.status === 'VOTING' && (
             <Card hover={false} className="bg-surface-highlight border-none space-y-6 text-center py-10">
               <motion.div
                 initial={{ scale: 0 }}
@@ -566,21 +665,26 @@ export const ProposalDetail = () => {
                 </p>
               </div>
 
-              {txHash && (
+              {(txHash || gaslessTxHash) && (
                 <div className="bg-white/50 p-4 rounded-xl space-y-3 max-w-sm mx-auto">
+                  {gaslessTxHash && (
+                    <div className="flex items-center justify-center gap-1 text-xs text-tertiary-accent font-bold">
+                      <Zap className="w-3 h-3" /> Submitted gaslessly — relayer paid gas
+                    </div>
+                  )}
                   <div className="text-xs text-text-muted uppercase font-bold tracking-widest">Transaction Hash</div>
-                  <div className="font-mono text-xs break-all text-text-primary">{txHash}</div>
+                  <div className="font-mono text-xs break-all text-text-primary">{gaslessTxHash ?? txHash}</div>
                   <div className="flex gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="flex-1 gap-2"
-                      onClick={() => navigator.clipboard.writeText(txHash)}
+                      onClick={() => navigator.clipboard.writeText((gaslessTxHash ?? txHash)!)}
                     >
                       <Copy className="w-3 h-3" /> Copy
                     </Button>
                     <a
-                      href={etherscanTx(txHash)}
+                      href={etherscanTx((gaslessTxHash ?? txHash)!)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1"

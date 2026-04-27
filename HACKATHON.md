@@ -170,13 +170,13 @@ ShadowDAO uses **16 distinct FHE operations** across 4 contracts — one of the 
 - → **16 FHE ops total**
 
 ### Wave 5 ✅ — SDK + Gasless + PWA + Final Polish
-- **Gasless EIP-712**: `voteWithSignature()` in ShadowVoteV2 — relayer pays gas
+- **Gasless EIP-712**: `voteWithSignature()` in ShadowVoteV2 + `/api/relay-vote` Vercel function + frontend toggle in ProposalDetail — user signs typed data, relayer submits tx and pays gas
 - **shadowdao-sdk**: `ShadowVoteClient`, `ShadowSpaceClient`, `useShadowVote` hook, full TypeScript types
 - **PWA**: manifest.json + service worker + offline fallback page
 - **Lazy loading**: all 14 routes code-split via React.lazy
 - **Custom 404**: FHE-themed animated error page
 - **Error boundary**: production crash recovery
-- **Multi-chain selector**: Sepolia ↔ Fhenix Testnet in Navbar
+- **Network enforcement**: Sepolia enforced on all write operations; multi-chain selector shown in Navbar (Fhenix mainnet when CoFHE launches there)
 - **OpenGraph + SEO**: full meta tags for social sharing
 - **TEMPLATE.md**: complete guide to adapt ShadowDAO to any FHE voting contract in 30 min
 

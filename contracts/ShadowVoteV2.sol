@@ -56,6 +56,7 @@ contract ShadowVoteV2 {
     mapping(address => bool) private hasPower;
 
     // --- Discussion ---
+    uint256 public constant MAX_COMMENTS_PER_PROPOSAL = 1000;
     mapping(uint256 => Comment[]) private comments;
 
     // --- Gasless meta-tx (EIP-712) ---
@@ -335,6 +336,7 @@ contract ShadowVoteV2 {
     function postComment(uint256 _proposalId, bytes32 _ipfsHash) external {
         require(proposals[_proposalId].optionCount > 0, "Proposal does not exist");
         require(_ipfsHash != bytes32(0), "Empty hash");
+        require(comments[_proposalId].length < MAX_COMMENTS_PER_PROPOSAL, "Comment limit reached");
 
         comments[_proposalId].push(Comment({
             author: msg.sender,
