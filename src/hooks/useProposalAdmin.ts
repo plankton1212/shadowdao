@@ -14,6 +14,8 @@ export function useProposalAdmin() {
         setError(null);
         setIsLoading(true);
 
+        if (!publicClient) throw new Error('No RPC connection — refresh the page');
+
         const hash = await writeContractAsync({
           address: SHADOWVOTE_ADDRESS,
           abi: SHADOWVOTE_ABI,
@@ -37,6 +39,8 @@ export function useProposalAdmin() {
     async (proposalId: bigint, newDeadlineTimestamp: number) => {
       try {
         setError(null);
+
+        if (!publicClient) throw new Error('No RPC connection — refresh the page');
 
         const nowSec = Math.floor(Date.now() / 1000);
         if (newDeadlineTimestamp <= nowSec) {

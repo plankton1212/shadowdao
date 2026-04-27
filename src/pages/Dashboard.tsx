@@ -439,11 +439,14 @@ function ActivityFeed() {
         }),
       ]);
 
+      const safeId = (l: any): string => {
+        try { return ((l.args as any).proposalId as bigint).toString(); } catch { return '?'; }
+      };
       const all: ActivityEvent[] = [
-        ...voteLogs.map(l => ({ type: 'VoteCast' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).voter, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
-        ...proposalLogs.map(l => ({ type: 'ProposalCreated' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
-        ...revealLogs.map(l => ({ type: 'ResultsRevealed' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
-        ...cancelLogs.map(l => ({ type: 'ProposalCancelled' as const, proposalId: ((l.args as any).proposalId as bigint).toString(), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...voteLogs.filter(l => (l.args as any)?.voter && (l.args as any)?.proposalId != null).map(l => ({ type: 'VoteCast' as const, proposalId: safeId(l), actor: (l.args as any).voter, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...proposalLogs.filter(l => (l.args as any)?.creator && (l.args as any)?.proposalId != null).map(l => ({ type: 'ProposalCreated' as const, proposalId: safeId(l), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...revealLogs.filter(l => (l.args as any)?.proposalId != null).map(l => ({ type: 'ResultsRevealed' as const, proposalId: safeId(l), blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
+        ...cancelLogs.filter(l => (l.args as any)?.creator && (l.args as any)?.proposalId != null).map(l => ({ type: 'ProposalCancelled' as const, proposalId: safeId(l), actor: (l.args as any).creator, blockNumber: l.blockNumber!, txHash: l.transactionHash! })),
       ];
 
       all.sort((a, b) => Number(b.blockNumber - a.blockNumber));

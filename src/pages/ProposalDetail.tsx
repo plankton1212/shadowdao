@@ -61,7 +61,7 @@ export const ProposalDetail = () => {
   const { address } = useAccount();
   const { proposals, loading, checkHasVoted, refetch } = useProposals();
   const { castVote, voteState, txHash, error: voteError, reset: resetVote } = useVote();
-  const { revealResults, fetchDecryptedResults, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
+  const { revealResults, fetchDecryptedResults, clearDecryptError, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
   const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError, reset: resetVerify } = useVerifyVote();
   const { spaces, checkIsMember } = useSpaces();
@@ -720,18 +720,30 @@ export const ProposalDetail = () => {
                 </div>
               ) : revealPermitError && revealError ? (
                 <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl space-y-3">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-warning flex-shrink-0" />
-                    <p className="text-sm text-warning font-medium">{revealError}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-warning font-medium">{revealError}</p>
+                    </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchDecryptedResults(proposalId, proposal.optionCount)}
-                    className="gap-2 text-warning border-warning/40 hover:bg-warning/10"
-                  >
-                    <Shield className="w-4 h-4" /> Re-sign &amp; Decrypt
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchDecryptedResults(proposalId!, proposal.optionCount)}
+                      className="gap-2 text-warning border-warning/40 hover:bg-warning/10"
+                    >
+                      <Shield className="w-4 h-4" /> Re-sign &amp; Decrypt
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearDecryptError}
+                      className="text-text-muted hover:text-text-primary"
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-8 gap-3 text-text-muted">
@@ -778,7 +790,15 @@ export const ProposalDetail = () => {
                     className="gap-2"
                     onClick={() => {
                       const total = results.reduce((a, b) => a + b.votes, 0);
-                      const csv = ['Option,Votes,Percentage', ...results.map((r) => `Option ${r.optionIndex + 1},${r.votes},${Math.round((r.votes / total) * 100)}%`)].join('\n');
+                      const csvEscape = (s: string) => `"${s.replace(/"/g, '""')}"`;
+                      const csv = [
+                        'Option,Votes,Percentage',
+                        ...results.map((r) => [
+                          csvEscape(`Option ${r.optionIndex + 1}`),
+                          r.votes,
+                          `${Math.round((r.votes / total) * 100)}%`,
+                        ].join(',')),
+                      ].join('\n');
                       const blob = new Blob([csv], { type: 'text/csv' });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');

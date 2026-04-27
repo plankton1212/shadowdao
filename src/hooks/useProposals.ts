@@ -53,19 +53,24 @@ export function useProposals() {
         functionName: 'getProposalCount',
       } as any)) as bigint;
 
-      const proposalPromises = [];
-      for (let i = 0n; i < count; i++) {
-        proposalPromises.push(
-          publicClient.readContract({
-            address: SHADOWVOTE_ADDRESS,
-            abi: SHADOWVOTE_ABI,
-            functionName: 'getProposal',
-            args: [i],
-          } as any)
-        );
+      // Batch reads 50 at a time to avoid overwhelming the RPC endpoint
+      const BATCH = 50n;
+      const results: any[] = [];
+      for (let start = 0n; start < count; start += BATCH) {
+        const end = start + BATCH < count ? start + BATCH : count;
+        const batch = [];
+        for (let i = start; i < end; i++) {
+          batch.push(
+            publicClient.readContract({
+              address: SHADOWVOTE_ADDRESS,
+              abi: SHADOWVOTE_ABI,
+              functionName: 'getProposal',
+              args: [i],
+            } as any)
+          );
+        }
+        results.push(...(await Promise.all(batch)));
       }
-
-      const results = await Promise.all(proposalPromises);
 
       const fetchedProposals: Proposal[] = results.map((result: any, index) => {
         const [creator, title, optionCount, deadline, quorum, voterCount, revealed, spaceId, spaceGated] = result;

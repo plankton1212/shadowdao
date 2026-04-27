@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useWriteContract, usePublicClient } from 'wagmi';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 import { useCofhe } from './useCofhe';
@@ -34,12 +34,15 @@ export function useReveal() {
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const { decrypt, initialize, isInitialized, getOrCreateSelfPermit } = useCofhe();
+  const isSigningRef = useRef(false); // prevent parallel permit signature dialogs
 
   const revealResults = useCallback(
     async (proposalId: bigint) => {
       try {
         setError(null);
         setIsRevealing(true);
+
+        if (!publicClient) throw new Error('No RPC connection — refresh the page');
 
         const hash = await writeContractAsync({
           address: SHADOWVOTE_ADDRESS,
@@ -61,7 +64,10 @@ export function useReveal() {
 
   const fetchDecryptedResults = useCallback(
     async (proposalId: bigint, optionCount: number) => {
-      if (!publicClient) return;
+      if (!publicClient) {
+        setError('No RPC connection — refresh the page');
+        return null;
+      }
 
       try {
         setError(null);
@@ -74,8 +80,14 @@ export function useReveal() {
         const { FheTypes } = await import('@cofhe/sdk');
 
         // Create permit before decrypting — required by CoFHE SDK.
-        // If the user rejects the EIP-712 signature this throws and is caught below.
-        await getOrCreateSelfPermit();
+        // Guard prevents multiple parallel signature dialogs on rapid clicks.
+        if (isSigningRef.current) throw new Error('Signature already in progress — please wait');
+        isSigningRef.current = true;
+        try {
+          await getOrCreateSelfPermit();
+        } finally {
+          isSigningRef.current = false;
+        }
 
         const decryptedResults: RevealedResult[] = [];
         let decryptFailed = false;
@@ -125,9 +137,15 @@ export function useReveal() {
     [publicClient, decrypt, initialize, isInitialized, getOrCreateSelfPermit]
   );
 
+  const clearDecryptError = useCallback(() => {
+    setError(null);
+    setIsPermitError(false);
+  }, []);
+
   return {
     revealResults,
     fetchDecryptedResults,
+    clearDecryptError,
     isRevealing,
     results,
     error,

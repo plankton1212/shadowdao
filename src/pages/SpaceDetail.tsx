@@ -37,8 +37,10 @@ export const SpaceDetail = () => {
   const publicClient = usePublicClient();
   const [removingMember, setRemovingMember] = useState<string | null>(null);
 
-  const id = BigInt(spaceId || '0');
-  const space = spaces.find((s) => s.id === id);
+  const id: bigint | null = (() => {
+    try { return spaceId ? BigInt(spaceId) : null; } catch { return null; }
+  })();
+  const space = id !== null ? spaces.find((s) => s.id === id) : undefined;
 
   useEffect(() => {
     const check = async () => {
@@ -125,6 +127,18 @@ export const SpaceDetail = () => {
       setRemovingMember(null);
     }
   };
+
+  if (id === null) {
+    return (
+      <AppLayout><PageWrapper>
+        <div className="max-w-3xl mx-auto text-center py-20 space-y-4">
+          <h2 className="text-2xl font-bold">Invalid Space ID</h2>
+          <p className="text-text-secondary">The URL contains an invalid space identifier.</p>
+          <Button variant="outline" onClick={() => navigate('/app/spaces')}>Back to Spaces</Button>
+        </div>
+      </PageWrapper></AppLayout>
+    );
+  }
 
   if (loading) {
     return (

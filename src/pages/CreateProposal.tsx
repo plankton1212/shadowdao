@@ -479,7 +479,7 @@ export const CreateProposal = () => {
                                 </select>
                                 <div className="flex items-center justify-between">
                                   <span className={cn('text-xs', isPast ? 'text-danger font-bold' : 'text-text-secondary')}>
-                                    {isPast ? 'This date is in the past!' : <>Ends: <span className="font-bold text-text-primary">{current.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></>}
+                                    {isPast ? 'This date is in the past!' : <>Ends: <span className="font-bold text-text-primary">{current.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span> <span className="text-text-muted">(your local time)</span></>}
                                   </span>
                                   {formData.customDate && (
                                     <button onClick={() => { setDeployError(null); setFormData((prev) => ({ ...prev, customDate: '', durationMinutes: 4320 })); }} className="text-xs text-danger hover:underline">Clear</button>

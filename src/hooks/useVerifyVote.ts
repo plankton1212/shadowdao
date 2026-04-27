@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
 import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
 import { useCofhe } from './useCofhe';
@@ -31,6 +31,7 @@ export function useVerifyVote() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPermitError, setIsPermitError] = useState(false);
+  const isSigningRef = useRef(false);
 
   const verifyMyVote = useCallback(
     async (proposalId: bigint) => {
@@ -46,8 +47,14 @@ export function useVerifyVote() {
         const { FheTypes } = await import('@cofhe/sdk');
 
         // getOrCreateSelfPermit creates the EIP-712 permit if one doesn't exist.
-        // If the user rejects the MetaMask signature, this throws and is caught below.
-        await getOrCreateSelfPermit();
+        // Guard prevents multiple parallel signature dialogs on rapid clicks.
+        if (isSigningRef.current) throw new Error('Signature already in progress — please wait');
+        isSigningRef.current = true;
+        try {
+          await getOrCreateSelfPermit();
+        } finally {
+          isSigningRef.current = false;
+        }
 
         const ctHash = (await publicClient.readContract({
           address: SHADOWVOTE_ADDRESS,

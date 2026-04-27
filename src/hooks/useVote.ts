@@ -20,6 +20,7 @@ export function useVote() {
       try {
         setError(null);
 
+        if (!publicClient) throw new Error('No RPC connection — refresh the page');
         if (chainId !== sepolia.id) {
           throw new Error('Wrong network — switch to Ethereum Sepolia to vote');
         }
