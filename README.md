@@ -320,6 +320,7 @@ Deploying a fresh stack: see **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)**.
 
 ## 📚 Docs
 
+- **[docs/DEEP-DIVE.md](docs/DEEP-DIVE.md)** — extended technical deep-dive: build story, engineering challenges, full FHE operation table, the 14-page UX walkthrough
 - **[docs/COERCION-RESISTANCE.md](docs/COERCION-RESISTANCE.md)** — full threat model: actors, guarantees, honest residual risks
 - **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)** — deploy & verify runbook
 - **[HACKATHON.md](HACKATHON.md)** — buildathon submission summary
