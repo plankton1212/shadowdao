@@ -50,6 +50,7 @@ export const CreateProposal = () => {
     customDate: '',
     quorum: 10,
     weighted: false,        // V2 only: FHE.mul weighted voting
+    anonymous: false,       // Wave 5: Semaphore ZK anonymous voting (space-gated)
     spaceId: null as bigint | null,
     spaceGated: false,
   });
@@ -120,6 +121,7 @@ export const CreateProposal = () => {
       formData.spaceGated && formData.spaceId !== null,
       descriptionHash,
       formData.weighted,
+      formData.anonymous,
     );
   };
 
@@ -518,7 +520,7 @@ export const CreateProposal = () => {
                             </div>
                           </div>
                           <button
-                            onClick={() => setFormData(f => ({ ...f, weighted: !f.weighted }))}
+                            onClick={() => setFormData(f => ({ ...f, weighted: !f.weighted, anonymous: !f.weighted ? false : f.anonymous }))}
                             className={cn(
                               'relative w-12 h-7 rounded-full transition-colors shrink-0',
                               formData.weighted ? 'bg-tertiary-accent' : 'bg-bg-base border border-default'
@@ -527,6 +529,33 @@ export const CreateProposal = () => {
                             <div className={cn(
                               'absolute top-[3px] w-5 h-5 bg-white rounded-full shadow transition-transform',
                               formData.weighted ? 'translate-x-[22px]' : 'translate-x-[3px]'
+                            )} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Wave 5: anonymous (Semaphore ZK) voting toggle */}
+                      {useV2 && (
+                        <div className="flex items-center justify-between p-4 bg-surface-tinted rounded-xl border border-default">
+                          <div className="space-y-0.5">
+                            <div className="text-sm font-bold flex items-center gap-2">
+                              Anonymous Voting
+                              <Badge variant="info" className="text-[10px]">Wave 5 · ZK</Badge>
+                            </div>
+                            <div className="text-xs text-text-muted">
+                              Voters prove space membership in zero knowledge — no address, no receipt. Requires a space; cannot combine with weighted voting.
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setFormData(f => ({ ...f, anonymous: !f.anonymous, weighted: !f.anonymous ? false : f.weighted }))}
+                            className={cn(
+                              'relative w-12 h-7 rounded-full transition-colors shrink-0',
+                              formData.anonymous ? 'bg-tertiary-accent' : 'bg-bg-base border border-default'
+                            )}
+                          >
+                            <div className={cn(
+                              'absolute top-[3px] w-5 h-5 bg-white rounded-full shadow transition-transform',
+                              formData.anonymous ? 'translate-x-[22px]' : 'translate-x-[3px]'
                             )} />
                           </button>
                         </div>
@@ -552,6 +581,7 @@ export const CreateProposal = () => {
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
                             <Badge variant={useV2 ? 'success' : 'default'}>{useV2 ? 'ShadowVoteV2' : 'ShadowVote V1'}</Badge>
                             {formData.weighted && <Badge variant="info">Weighted (FHE.mul)</Badge>}
+                            {formData.anonymous && <Badge variant="success">Anonymous (ZK)</Badge>}
                             {formData.ipfsCid && <Badge variant="default">IPFS CID set</Badge>}
                           </div>
                         </div>

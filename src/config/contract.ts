@@ -1,12 +1,32 @@
 // Wave 2: Space-gated voting. ShadowVote redeployed with spaceId + spaceGated in Proposal.
 export const SHADOWVOTE_ADDRESS = '0x625b9b6cBd467E69b4981457e7235EBd2874EF86' as const;
-export const SHADOWSPACE_ADDRESS = '0x2B2A4370c5f26cB109D04047e018E65ddf413c88' as const;
+export const SHADOWSPACE_ADDRESS = '0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E' as const;
 
 // Wave 3+: deployed on Ethereum Sepolia
-export const SHADOWVOTEV2_ADDRESS = '0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA' as `0x${string}`;
+export const SHADOWVOTEV2_ADDRESS = '0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa' as `0x${string}`;
 export const SHADOWTREASURY_ADDRESS = '0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db' as `0x${string}`;
 export const SHADOWDELEGATE_ADDRESS = '0x2a896334a0B1263f397A45844a307D4cF90cb5f1' as `0x${string}`;
+// Wave 5: ShadowToken (confidential governance token). Deployed on Sepolia.
+export const SHADOWTOKEN_ADDRESS = '0x9a86031C1392033007eA928Fd6166B0C6eD5b238' as `0x${string}`;
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
+
+// Wave 5: Semaphore protocol contract (anonymous voting). Deployed deterministically
+// at the same address on every network, including Ethereum Sepolia.
+export const SEMAPHORE_ADDRESS = '0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D' as `0x${string}`;
+
+// Minimal Semaphore ABI — only the MemberAdded event, used to reconstruct a
+// space's group (identity commitments) client-side for ZK proof generation.
+export const SEMAPHORE_ABI = [
+  {
+    name: 'MemberAdded', type: 'event' as const,
+    inputs: [
+      { name: 'groupId', type: 'uint256' as const, indexed: true },
+      { name: 'index', type: 'uint256' as const, indexed: false },
+      { name: 'identityCommitment', type: 'uint256' as const, indexed: false },
+      { name: 'merkleTreeRoot', type: 'uint256' as const, indexed: false },
+    ],
+  },
+] as const;
 
 export const ETHERSCAN_BASE = 'https://sepolia.etherscan.io';
 export const etherscanTx = (hash: string) => `${ETHERSCAN_BASE}/tx/${hash}`;
@@ -128,6 +148,48 @@ export const SHADOWSPACE_ABI = [
     inputs: [
       { name: 'spaceId', type: 'uint256' as const, indexed: true },
       { name: 'creator', type: 'address' as const, indexed: true },
+    ],
+  },
+  // --- Wave 5: anonymous voting (Semaphore ZK groups) ---
+  {
+    name: 'registerVotingIdentity', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: '_spaceId', type: 'uint256' as const },
+      { name: '_identityCommitment', type: 'uint256' as const },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'spaceGroupId', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'spaceHasGroup', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '', type: 'uint256' as const }],
+    outputs: [{ name: '', type: 'bool' as const }],
+  },
+  {
+    name: 'hasVotingIdentity', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: '', type: 'uint256' as const }, { name: '', type: 'address' as const }],
+    outputs: [{ name: '', type: 'bool' as const }],
+  },
+  {
+    name: 'semaphore', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'address' as const }],
+  },
+  {
+    name: 'SpaceGroupCreated', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'groupId', type: 'uint256' as const, indexed: true },
+    ],
+  },
+  {
+    name: 'VotingIdentityRegistered', type: 'event' as const,
+    inputs: [
+      { name: 'spaceId', type: 'uint256' as const, indexed: true },
+      { name: 'member', type: 'address' as const, indexed: true },
     ],
   },
 ] as const;
@@ -311,6 +373,7 @@ export const SHADOWVOTEV2_ABI = [
       { name: '_weighted', type: 'bool' as const },
       { name: '_spaceId', type: 'uint256' as const },
       { name: '_spaceGated', type: 'bool' as const },
+      { name: '_anonymous', type: 'bool' as const },
     ],
     outputs: [{ name: '', type: 'uint256' as const }],
   },
@@ -386,6 +449,7 @@ export const SHADOWVOTEV2_ABI = [
       { name: 'weighted', type: 'bool' as const },
       { name: 'spaceId', type: 'uint256' as const },
       { name: 'spaceGated', type: 'bool' as const },
+      { name: 'isAnonymous', type: 'bool' as const },
     ],
   },
   {
@@ -439,11 +503,7 @@ export const SHADOWVOTEV2_ABI = [
     inputs: [{ name: '_spaceId', type: 'uint256' as const }],
     outputs: [{ name: '', type: 'uint256[]' as const }],
   },
-  {
-    name: 'getMyVote', type: 'function' as const, stateMutability: 'view' as const,
-    inputs: [{ name: '_proposalId', type: 'uint256' as const }],
-    outputs: [{ name: '', type: 'uint256' as const }],
-  },
+  // Wave 5: getMyVote() removed  -  ballots are receipt-free (no per-voter decryptable copy)
   {
     name: 'nonces', type: 'function' as const, stateMutability: 'view' as const,
     inputs: [{ name: '', type: 'address' as const }],
@@ -501,6 +561,7 @@ export const SHADOWVOTEV2_ABI = [
       { name: 'weighted', type: 'bool' as const, indexed: false },
       { name: 'spaceId', type: 'uint256' as const, indexed: false },
       { name: 'spaceGated', type: 'bool' as const, indexed: false },
+      { name: 'isAnonymous', type: 'bool' as const, indexed: false },
     ],
   },
   {
@@ -544,6 +605,63 @@ export const SHADOWVOTEV2_ABI = [
       { name: 'proposalId', type: 'uint256' as const, indexed: true },
       { name: 'newDeadline', type: 'uint256' as const, indexed: false },
     ],
+  },
+  // --- Wave 5: anonymous voting (Semaphore ZK) ---
+  {
+    name: 'voteAnonymous', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: '_proposalId', type: 'uint256' as const },
+      {
+        name: '_encryptedOption', type: 'tuple' as const,
+        components: [
+          { name: 'ctHash', type: 'uint256' as const },
+          { name: 'securityZone', type: 'uint8' as const },
+          { name: 'utype', type: 'uint8' as const },
+          { name: 'signature', type: 'bytes' as const },
+        ],
+      },
+      {
+        name: '_proof', type: 'tuple' as const,
+        components: [
+          { name: 'merkleTreeDepth', type: 'uint256' as const },
+          { name: 'merkleTreeRoot', type: 'uint256' as const },
+          { name: 'nullifier', type: 'uint256' as const },
+          { name: 'message', type: 'uint256' as const },
+          { name: 'scope', type: 'uint256' as const },
+          { name: 'points', type: 'uint256[8]' as const },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'setSemaphore', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_semaphore', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'semaphore', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'address' as const }],
+  },
+  {
+    name: 'AnonymousVoteCast', type: 'event' as const,
+    inputs: [
+      { name: 'proposalId', type: 'uint256' as const, indexed: true },
+      { name: 'nullifier', type: 'uint256' as const, indexed: false },
+    ],
+  },
+  {
+    name: 'setShadowToken', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: '_shadowToken', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'shadowToken', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'address' as const }],
+  },
+  {
+    name: 'VotingPowerSynced', type: 'event' as const,
+    inputs: [{ name: 'voter', type: 'address' as const, indexed: true }],
   },
 ] as const;
 
@@ -747,6 +865,82 @@ export const SHADOWDELEGATE_ABI = [
     inputs: [
       { name: 'from', type: 'address' as const, indexed: true },
       { name: 'previousDelegate', type: 'address' as const, indexed: true },
+    ],
+  },
+] as const;
+
+// --- ShadowToken ABI (Wave 5: confidential governance token) ---
+export const SHADOWTOKEN_ABI = [
+  {
+    name: 'mint', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: 'to', type: 'address' as const },
+      {
+        name: 'encryptedAmount', type: 'tuple' as const,
+        components: [
+          { name: 'ctHash', type: 'uint256' as const },
+          { name: 'securityZone', type: 'uint8' as const },
+          { name: 'utype', type: 'uint8' as const },
+          { name: 'signature', type: 'bytes' as const },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'transfer', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [
+      { name: 'to', type: 'address' as const },
+      {
+        name: 'encryptedAmount', type: 'tuple' as const,
+        components: [
+          { name: 'ctHash', type: 'uint256' as const },
+          { name: 'securityZone', type: 'uint8' as const },
+          { name: 'utype', type: 'uint8' as const },
+          { name: 'signature', type: 'bytes' as const },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'syncVotingPower', type: 'function' as const, stateMutability: 'nonpayable' as const,
+    inputs: [{ name: 'shadowVote', type: 'address' as const }],
+    outputs: [],
+  },
+  {
+    name: 'getEncryptedBalance', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'isHolder', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [{ name: 'account', type: 'address' as const }],
+    outputs: [{ name: '', type: 'bool' as const }],
+  },
+  {
+    name: 'holderCount', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'uint256' as const }],
+  },
+  {
+    name: 'owner', type: 'function' as const, stateMutability: 'view' as const,
+    inputs: [], outputs: [{ name: '', type: 'address' as const }],
+  },
+  {
+    name: 'Minted', type: 'event' as const,
+    inputs: [{ name: 'to', type: 'address' as const, indexed: true }],
+  },
+  {
+    name: 'Transferred', type: 'event' as const,
+    inputs: [
+      { name: 'from', type: 'address' as const, indexed: true },
+      { name: 'to', type: 'address' as const, indexed: true },
+    ],
+  },
+  {
+    name: 'VotingPowerSynced', type: 'event' as const,
+    inputs: [
+      { name: 'holder', type: 'address' as const, indexed: true },
+      { name: 'shadowVote', type: 'address' as const, indexed: true },
     ],
   },
 ] as const;
