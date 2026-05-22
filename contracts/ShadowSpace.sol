@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+import {ISemaphore} from "./ISemaphore.sol";
+
 /// @title ShadowSpace — on-chain DAO registry for ShadowDAO
-/// @notice Stores Space metadata, membership, and proposal count.
-///         Membership is intentionally public — only ballots are FHE-encrypted.
+/// @notice Stores Space metadata, membership, and proposal count. Address-based
+///         membership stays public — only ballots are FHE-encrypted.
 /// @dev Wave 2: added owner/ACL, leaveSpace, archiveSpace, memberList removal fix.
+///      Wave 5: every space also gets a Semaphore group. Members may register a
+///      zero-knowledge voting identity, enabling anonymous (coercion-resistant)
+///      voting where the contract never learns who cast which ballot.
 contract ShadowSpace {
     enum Category { DeFi, NFT, Infrastructure, Gaming, Privacy, L2, DAOTooling, Social }
 
@@ -33,6 +38,16 @@ contract ShadowSpace {
     mapping(address => uint256[]) private userSpaces;
     uint256 public spaceCount;
 
+    // --- Wave 5: anonymous voting (Semaphore ZK groups) ---
+    /// @notice The Semaphore protocol contract (set once at deployment).
+    ISemaphore public semaphore;
+    /// @notice Semaphore group id backing each space (one group per space).
+    mapping(uint256 => uint256) public spaceGroupId;
+    /// @notice True once a space's Semaphore group has been created.
+    mapping(uint256 => bool) public spaceHasGroup;
+    /// @notice One ZK voting identity per address per space (anti-Sybil).
+    mapping(uint256 => mapping(address => bool)) public hasVotingIdentity;
+
     // --- Events ---
     event SpaceCreated(
         uint256 indexed spaceId,
@@ -48,6 +63,8 @@ contract ShadowSpace {
     event SpaceUpdated(uint256 indexed spaceId, string name, string description);
     event SpaceArchived(uint256 indexed spaceId, address indexed creator);
     event ShadowVoteContractUpdated(address indexed newAddress);
+    event SpaceGroupCreated(uint256 indexed spaceId, uint256 indexed groupId);
+    event VotingIdentityRegistered(uint256 indexed spaceId, address indexed member);
 
     // --- Modifiers ---
     modifier onlyOwner() {
@@ -55,8 +72,10 @@ contract ShadowSpace {
         _;
     }
 
-    constructor() {
+    constructor(address _semaphore) {
+        require(_semaphore != address(0), "Zero Semaphore address");
         owner = msg.sender;
+        semaphore = ISemaphore(_semaphore);
     }
 
     // --- Admin ---
@@ -112,6 +131,13 @@ contract ShadowSpace {
             }
         }
 
+        // Wave 5: back every space with a Semaphore group so members can vote
+        // anonymously. ShadowSpace is the group admin and proxies addMember.
+        uint256 groupId = semaphore.createGroup(address(this));
+        spaceGroupId[spaceId] = groupId;
+        spaceHasGroup[spaceId] = true;
+        emit SpaceGroupCreated(spaceId, groupId);
+
         emit SpaceCreated(spaceId, msg.sender, _name, _description, _category, _isPublic, _defaultQuorum);
         return spaceId;
     }
@@ -128,6 +154,28 @@ contract ShadowSpace {
         space.memberCount++;
 
         emit MemberJoined(_spaceId, msg.sender);
+    }
+
+    /// @notice Register a zero-knowledge voting identity for anonymous voting.
+    /// @dev    Caller must already be an (address-based) member of the space.
+    ///         The identity commitment — generated client-side by the Semaphore
+    ///         SDK — is added to the space's Semaphore group. From then on the
+    ///         member can vote on that space's anonymous proposals without ever
+    ///         revealing which member they are. One identity per address per
+    ///         space (anti-Sybil). Registering links msg.sender to a commitment
+    ///         publicly; the later *vote* does not — that is the anonymity set.
+    function registerVotingIdentity(uint256 _spaceId, uint256 _identityCommitment) external {
+        Space storage space = spaces[_spaceId];
+        require(space.active, "Space does not exist");
+        require(spaceHasGroup[_spaceId], "Space has no group");
+        require(isMember[_spaceId][msg.sender], "Not a space member");
+        require(!hasVotingIdentity[_spaceId][msg.sender], "Identity already registered");
+        require(_identityCommitment != 0, "Invalid identity commitment");
+
+        hasVotingIdentity[_spaceId][msg.sender] = true;
+        semaphore.addMember(spaceGroupId[_spaceId], _identityCommitment);
+
+        emit VotingIdentityRegistered(_spaceId, msg.sender);
     }
 
     /// @notice Leave a space. Creator cannot leave — archive the space instead.

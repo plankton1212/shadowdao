@@ -18,7 +18,7 @@
  * const proposals = await client.getAllProposals();
  */
 
-import type { Address, Proposal, VoteResult, InEuint32 } from './types.js';
+import type { Address, Proposal, VoteResult, InEuint32, SemaphoreProof } from './types.js';
 
 export interface ShadowVoteClientConfig {
   address: Address;
@@ -77,6 +77,7 @@ export class ShadowVoteClient {
       weighted: result.weighted as boolean | undefined,
       spaceId: result.spaceId as bigint,
       spaceGated: result.spaceGated as boolean,
+      isAnonymous: result.isAnonymous as boolean | undefined,
       status,
     };
   }
@@ -140,6 +141,7 @@ export class ShadowVoteClient {
     weighted?: boolean;
     spaceId?: bigint;
     spaceGated?: boolean;
+    anonymous?: boolean;
   }): Promise<`0x${string}`> {
     this.requireWallet();
     const isV2 = this.abi.some((f: any) => f.name === 'createProposal' &&
@@ -159,6 +161,7 @@ export class ShadowVoteClient {
           params.weighted ?? false,
           params.spaceId ?? 0n,
           params.spaceGated ?? false,
+          params.anonymous ?? false,
         ],
       });
     }
@@ -177,6 +180,26 @@ export class ShadowVoteClient {
       abi: this.abi,
       functionName: 'vote',
       args: [proposalId, encryptedOption],
+    });
+  }
+
+  /**
+   * Cast an anonymous vote on an anonymous proposal (ShadowVoteV2, Wave 5).
+   * Eligibility is proven by a Semaphore zero-knowledge proof — generate it
+   * client-side with `@semaphore-protocol/proof` and pass it here. The SDK
+   * only submits the transaction; it carries no ZK dependency of its own.
+   */
+  async voteAnonymous(
+    proposalId: bigint,
+    encryptedOption: InEuint32,
+    proof: SemaphoreProof
+  ): Promise<`0x${string}`> {
+    this.requireWallet();
+    return this.walletClient.writeContract({
+      address: this.address,
+      abi: this.abi,
+      functionName: 'voteAnonymous',
+      args: [proposalId, encryptedOption, proof],
     });
   }
 

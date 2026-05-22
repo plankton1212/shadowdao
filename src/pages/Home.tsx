@@ -488,7 +488,7 @@ export const Home = () => {
               {[
                 { title: 'Client-Side Encryption', desc: 'Votes encrypted in your browser via CoFHE SDK before submission.' },
                 { title: 'Homomorphic Tallying', desc: 'Smart contract adds encrypted values without knowing what they are.' },
-                { title: 'Permit-Based Verification', desc: 'Verify your own vote was counted via EIP-712 FHE permit.' },
+                { title: 'Receipt-Free Ballots', desc: 'No decryptable copy of your vote is ever stored — not even you can prove how you voted.' },
               ].map((item, i) => (
                 <StaggerItem key={i}>
                   <div className="flex gap-4 group">
@@ -539,7 +539,7 @@ export const Home = () => {
 
           <StaggerContainer className="grid md:grid-cols-4 gap-8">
             {[
-              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted proposals, FHE tallying, permit verify, admin cancel/extend. 10 FHE ops.' },
+              { phase: 'Wave 1', title: 'FHE Voting', status: 'Live', desc: 'Encrypted proposals, FHE tallying, permit-gated reveal, admin cancel/extend. 10 FHE ops.' },
               { phase: 'Wave 2', title: 'Space-Gated', status: 'Live', desc: 'Space-gated voting, ACL wiring, encrypted quorum, differential tally. 13 FHE ops.' },
               { phase: 'Wave 3', title: 'Treasury + Weighted', status: 'Live', desc: 'Encrypted treasury (euint32), weighted voting FHE.mul, IPFS proposals, FHE visualizer. 14 ops.' },
               { phase: 'Wave 4-5', title: 'Full Protocol', status: 'Live', desc: 'Delegation, gasless EIP-712 meta-tx, on-chain discussion, analytics, shadowdao-sdk, PWA. 16 ops.' },
@@ -566,7 +566,7 @@ export const Home = () => {
 
         <Accordion items={[
           { title: 'Is ShadowDAO really private?', content: 'Yes. Using Fhenix FHE, your vote is encrypted before leaving your browser. The smart contract tallies votes while still encrypted. Only aggregate results are decrypted.' },
-          { title: 'Can I verify my vote was counted?', content: "Absolutely. The 'Verify My Vote' feature uses a personal FHE permit (EIP-712 signature) to reveal your own vote to you only." },
+          { title: 'Can I verify my vote was counted?', content: 'You can confirm your vote was recorded — participation is publicly verifiable on-chain. By design, though, no one (including you) can decrypt an individual ballot to prove which option it was. That receipt-freeness is what makes ShadowDAO resistant to vote-buying and coercion.' },
           { title: 'What networks are supported?', content: 'Currently live on Ethereum Sepolia with Fhenix CoFHE coprocessor. Multi-chain expansion planned for Wave 5.' },
           { title: 'How is this different from Snapshot?', content: 'Snapshot votes are fully public. Their optional shielded voting reveals individual votes after voting ends. ShadowDAO keeps individual votes encrypted forever — only totals are revealed.' },
         ]} />

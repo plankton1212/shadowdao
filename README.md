@@ -1,310 +1,301 @@
 <p align="center">
-  <img src="public/logo.svg" width="80" height="80" alt="ShadowDAO Logo" />
+  <img src="public/logo.svg" width="84" height="84" alt="ShadowDAO" />
 </p>
 
 <h1 align="center">ShadowDAO</h1>
 
+<p align="center"><b>The first coercion-resistant DAO governance protocol —<br/>FHE-encrypted voting on Fhenix.</b></p>
+
 <p align="center">
-  Private on-chain DAO governance powered by Fhenix CoFHE
+  <a href="https://shadowdao.vercel.app">🌐 Live Demo</a> ·
+  <a href="docs/COERCION-RESISTANCE.md">🔐 Threat Model</a> ·
+  <a href="HACKATHON.md">📋 Submission</a> ·
+  <a href="https://cofhe-docs.fhenix.zone">📖 Fhenix Docs</a>
 </p>
 
 <p align="center">
-  <a href="https://shadowdao.vercel.app">Live Demo</a> ·
-  <a href="https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86">ShadowVote</a> ·
-  <a href="https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88">ShadowSpace</a> ·
-  <a href="https://sepolia.etherscan.io/address/0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA">ShadowVoteV2</a> ·
-  <a href="https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db">ShadowTreasury</a> ·
-  <a href="https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1">ShadowDelegate</a> ·
-  <a href="https://cofhe-docs.fhenix.zone">Fhenix Docs</a>
+  <code>Sepolia</code> · <code>6 contracts live</code> · <code>12 FHE primitives</code> · <code>Semaphore ZK</code> · <code>14-page dApp + SDK</code>
 </p>
 
 ---
 
-## What it does
+ShadowDAO is on-chain DAO governance where **the vote, the voter, and the voter's
+stake are all encrypted**. Ballots are encrypted in the browser with Fhenix
+**Fully Homomorphic Encryption**; the contract tallies them *on ciphertext* and
+never sees a single choice. Wave 5 closes the last gap — votes are now
+**receipt-free** and **anonymous** (zero-knowledge eligibility), so a vote can no
+longer be observed, bought, or coerced.
 
-Ever voted in a DAO and felt like you were being watched? That's because you were. Every Snapshot vote, every Governor ballot — it's all public. Everyone sees what you picked.
-
-ShadowDAO fixes that. You vote, your ballot gets FHE-encrypted right in the browser before it even hits the chain. The smart contract counts votes *on the ciphertext* — it literally adds numbers it can't read. When the deadline passes and quorum is met, anyone can trigger the reveal. But here's the thing: only the totals get decrypted. Your individual vote stays encrypted forever.
-
-The flow is: pick an option → CoFHE SDK encrypts it as `euint32` + generates ZK proof → the encrypted tuple goes on-chain → the contract runs `FHE.eq` + `FHE.select` + `FHE.add` for each option to tally without seeing anything → after the deadline, `FHE.allowPublic` makes the aggregate readable.
-
-And if you're paranoid (fair), there's a "Verify My Vote" button. It uses `FHE.allowSender` so only *you* can decrypt *your own* ballot. Nobody else.
-
-**All 5 waves are complete.** 4 contracts deployed on Sepolia. **16 FHE operations** across the full stack.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     VOTE LIFECYCLE                               │
-│                                                                  │
-│  Browser                    Contract               CoFHE         │
-│  ───────                    ────────               ─────         │
-│                                                                  │
-│  1. Pick option                                                  │
-│  2. Encryptable.uint32() ──>  3. FHE.asEuint32()                │
-│     + ZK proof                                                   │
-│                               4. for each option i:              │
-│                                  FHE.eq(vote, i)   ── compute ──│
-│                                  FHE.select(match)  ── compute ──│
-│                                  FHE.mul(inc, power)── compute ──│  ← V2 weighted
-│                                  FHE.add(tally, inc)── compute ──│
-│                                                                  │
-│                               5. FHE.allowSender(vote)           │
-│                                  voter can self-verify           │
-│                                                                  │
-│         ═══ DEADLINE PASSES ═══                                  │
-│                                                                  │
-│                               6. FHE.allowPublic()  ── unlock ──│
-│                                                                  │
-│  7. decryptForView() <────── 8. Return aggregate                │
-│     with EIP-712 permit         counts only                      │
-│                                                                  │
-│  Individual votes stay encrypted. Forever. No exceptions.        │
-└─────────────────────────────────────────────────────────────────┘
-```
+> **Track:** Confidential Governance — *coercion-resistant voting & private DAO coordination.*
 
 ---
 
-## The problem it solves
+## 📌 At a glance — for judges
 
-DAO governance has a transparency problem that nobody talks about honestly.
+| | |
+|---|---|
+| **What** | Confidential, coercion-resistant DAO governance protocol |
+| **Built on** | Fhenix CoFHE (FHE coprocessor) + Semaphore v4 (ZK) |
+| **Live** | 6 contracts deployed & wired on Ethereum Sepolia — all Etherscan-verifiable |
+| **FHE depth** | 12 distinct FHE primitives across 5 encrypted contracts |
+| **Product** | 14-page dApp, reusable npm SDK, gasless relayer, PWA |
+| **Progress** | 5 waves shipped — each builds on the last (see [progress](#-progress-across-waves)) |
+| **This wave** | Wave 5 — **coercion resistance**: receipt-free ballots + anonymous ZK voting + confidential governance token |
 
-When votes are public, whales can pressure smaller holders — "vote my way, I can check." Traders frontrun visible vote momentum. People vote with the majority because disagreeing publicly has social costs. Last-minute pile-ons turn governance into a timing game. And vote buying? Trivially verifiable when everything is on-chain.
+---
 
-These aren't edge cases. They happen every day across DeFi. The root cause is always the same: **transparent voting forces participants to optimize for consequences rather than honest preference.**
+## 🎯 The problem
 
-Snapshot added "shielded voting" recently, but it uses threshold encryption — after the vote ends, all individual votes get decrypted and become public. That's not privacy. That's delayed transparency.
+Public blockchains made governance *transparent by default* — and that quietly broke it:
 
-ShadowDAO is different because individual votes are never decrypted. The contract performs arithmetic on encrypted data through Fhenix's CoFHE coprocessor. It knows the totals because it computed them homomorphically. But it never knew any individual ballot.
+- **Coercion** — a whale or employer says "vote my way, I can check." On a transparent chain, they can.
+- **Vote-buying** — when every ballot is on-chain, a briber can *verify* compliance before paying. The market clears.
+- **Whale pressure & conformity** — minority voters are visible, so they self-censor.
+- **MEV / front-running** — bots read live vote momentum and trade the outcome.
+- **The institutional gap** — funds with compliance requirements *cannot* deploy on rails where every position is public.
 
-### ShadowDAO vs Snapshot
+Snapshot's "shielded voting" uses threshold encryption — every individual vote is
+**decrypted and made public after the deadline**. That is delayed transparency,
+not privacy. The root cause is unaddressed: **transparent voting makes people
+optimize for consequences instead of honest preference.**
 
-|  | Snapshot | ShadowDAO |
-|--|---------|-----------|
-| Privacy | Optional add-on ("Shielded") | **Mandatory, default** |
-| Encryption | Threshold — reveals all votes after deadline | **FHE — individual votes never revealed** |
-| Where votes live | Off-chain (IPFS) | **On-chain (Ethereum + CoFHE)** |
+## 💡 The solution — three layers of privacy
+
+ShadowDAO is the only design that closes **all three**:
+
+| Layer | Question | How ShadowDAO answers it |
+|---|---|---|
+| **Ballot secrecy** | Can anyone read *what* you voted? | FHE — the tally is computed on ciphertext; individual votes are *never* decrypted |
+| **Receipt-freeness** | Can *you* prove your vote to a briber? | No decryptable copy is stored, no permit granted over a ballot — proof is impossible |
+| **Voter anonymity** | Can anyone see *that you* voted? | Semaphore zero-knowledge eligibility + a gasless relayer — your address never touches the chain |
+
+Full threat model: **[docs/COERCION-RESISTANCE.md](docs/COERCION-RESISTANCE.md)**.
+
+---
+
+## ⭐ Killer features
+
+- 🔒 **Confidential FHE voting** — ballots encrypted client-side; the contract runs `FHE.eq → FHE.select → FHE.add` to tally *without ever decrypting a vote*. Only aggregate totals are revealed, after the deadline.
+- 🧾 **Receipt-free ballots** *(Wave 5)* — the contract keeps **no** decryptable per-voter copy and grants **no** FHE permit over a ballot. You cannot prove how you voted — so nobody can buy or coerce it.
+- 🥷 **Anonymous voting** *(Wave 5)* — prove DAO membership with a **Semaphore zero-knowledge proof** + per-proposal nullifier. The contract verifies eligibility without learning *who* you are; routed through the gasless relayer, your wallet address never appears on-chain.
+- 🪙 **Confidential governance token** *(Wave 5)* — `ShadowToken`, an FHERC20 with **encrypted `euint32` balances**. Weighted-voting power is derived trustlessly from your encrypted balance — not assigned by an admin.
+- 💸 **Gasless voting** — EIP-712 meta-transactions; a relayer pays gas, you sign offline.
+- 🏦 **Encrypted treasury** — DAO balance lives as a `euint32` ciphertext; solvency checks run on encrypted data (`FHE.gte`).
+- 🤝 **Encrypted delegation** — delegated voting power accumulates in an encrypted pool; the leaderboard ranks delegates without revealing amounts.
+- 🧰 **Reusable SDK** — `shadowdao-sdk`: drop-in TypeScript clients + React hook so any team can add FHE voting in ~30 min.
+- 🖥️ **Complete product** — 14-page dApp, live event feed, analytics dashboard, on-chain discussion, PWA, dark mode.
+
+---
+
+## 🔐 Wave 5 spotlight — Coercion Resistance
+
+Encrypting the *ballot* is not enough. A vote is only coercion-resistant if it
+cannot be **observed**, **bought**, or **compelled**. Wave 5 delivers all three.
+
+**1 · Receipt-freeness** — `ShadowVoteV2._castVote` no longer stores a per-voter
+ballot copy and no longer calls `FHE.allowSender` on a ballot. `getMyVote()` is
+removed. A briber has nothing to verify → the vote-buying market cannot clear.
+
+**2 · Anonymous eligibility (ZK)** — every Space runs a **Semaphore group**.
+A member registers a zero-knowledge identity, then `voteAnonymous()` verifies a
+Semaphore membership proof + nullifier. The contract learns *"an eligible member
+voted"* — never *which* member. No KYC, no trusted authority — membership is
+fully on-chain.
+
+**3 · Anonymous transport** — the anonymous vote is relayed through
+`/api/relay-anon-vote`, so the voter's address never appears even as
+`msg.sender`. The Wave-3 gasless relayer is reused as the anonymity layer.
+
+**4 · Trustless weight** — `ShadowToken` (confidential FHERC20) replaces
+admin-assigned voting power: weight is your own **encrypted** token balance.
+
+| Attack | Before Wave 5 | After Wave 5 |
+|---|---|---|
+| Read a ballot on-chain | ❌ blocked (FHE) | ❌ blocked |
+| Make the voter *prove* their vote | ⚠️ possible (`getMyVote` + permit) | ❌ **blocked — receipt-free** |
+| See *that* an address voted | ⚠️ possible | ❌ **blocked — ZK + relayer** |
+| Game weighted voting via admin | ⚠️ admin-set power | ❌ **trustless — encrypted token balance** |
+
+---
+
+## 🧬 Fhenix FHE integration
+
+The whole protocol is built *on* FHE — it is not a feature bolted on. **12 distinct
+FHE primitives** run across **5 encrypted contracts**:
+
+| FHE primitive | Used in | Purpose |
+|---|---|---|
+| `FHE.asEuint32` | all 5 | Convert a browser-encrypted input into an on-chain ciphertext |
+| `FHE.eq` | ShadowVote, V2 | Encrypted equality — does this ballot match option *i*? |
+| `FHE.select` | Vote, V2, Treasury, Delegate, Token | Encrypted if/else — branchless, leak-free |
+| `FHE.add` | all 5 | Homomorphic addition — tallies, balances, delegation pool |
+| `FHE.sub` | Vote, V2, Treasury, Delegate, Token | Encrypted subtraction — margins, balance decrement |
+| `FHE.mul` | ShadowVoteV2 | Weighted voting — ballot × encrypted voting power |
+| `FHE.gte` | Vote, V2, Treasury, Token | Encrypted ≥ — quorum check, solvency gate |
+| `FHE.max` | ShadowVote, V2 | Leading option without revealing any tally |
+| `FHE.allowThis` | all 5 | Contract retains ciphertext access across transactions |
+| `FHE.allowSender` | V2, Treasury | Permit-gated decryption of **aggregates only** — never a ballot |
+| `FHE.allowPublic` | ShadowVote, V2 | Unlock aggregate tallies after the deadline |
+| `FHE.allow` | ShadowToken → V2 | Cross-contract grant — encrypted balance becomes voting power |
+
+**Encrypted types:** `euint32` (tallies, balances, voting power), `ebool` (comparisons), `InEuint32` (browser inputs).
+
+### What genuinely requires FHE
+
+| Capability | Without FHE |
+|---|---|
+| Casting a vote | Your choice is public on-chain |
+| Receipt-free ballot | A briber can verify and pay |
+| Encrypted tally / quorum | Live vote count leaks, enabling front-running |
+| Encrypted treasury balance | DAO balance fully visible on Etherscan |
+| Encrypted delegation & weighted voting | Power amounts public |
+| Confidential token balances | Holdings public, vote-weight gameable |
+
+---
+
+## 🔗 Integrations & tech stack
+
+| Layer | Technology | Role |
+|---|---|---|
+| **FHE engine** | Fhenix **CoFHE** coprocessor | FHE operations on top of standard EVM — no separate chain |
+| **FHE SDK** | `@cofhe/sdk` 0.5 | Browser-side encryption, ZK input proofs, EIP-712 permits |
+| **FHE contracts** | `@fhenixprotocol/cofhe-contracts` | Solidity `euint32` / `ebool` / `InEuint32` |
+| **Zero-knowledge** | **Semaphore v4** (`@semaphore-protocol/*`) | Anonymous membership proofs + nullifiers |
+| **Contracts** | Solidity 0.8.25 (EVM Cancun) | 6 contracts on Sepolia |
+| **Frontend** | React 19 · TypeScript · Vite 6 | 14 lazy-loaded pages |
+| **Styling** | Tailwind CSS 4 · Motion 12 | Animations, dark mode |
+| **Wallet** | wagmi 3 · viem 2 | Type-safe contract calls |
+| **IPFS** | Pinata via Vercel serverless | On-chain discussion (CID on-chain, JWT server-side) |
+| **Relayers** | Vercel serverless | Gasless EIP-712 voting + anonymous-vote transport |
+| **Hosting** | Vercel | COOP/COEP headers for WASM, API routes |
+
+---
+
+## 📜 Deployed contracts — Ethereum Sepolia
+
+All live, wired, and verifiable on Etherscan (Chain ID `11155111` · Solidity `0.8.25`).
+
+| Contract | Address | Role |
+|---|---|---|
+| **ShadowVoteV2** | [`0xA45AD263…44fBaDa`](https://sepolia.etherscan.io/address/0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa) | Core voting — FHE tally, weighted votes, **receipt-free + anonymous ZK voting**, gasless |
+| **ShadowSpace** | [`0x96F2AEa4…3f4E299E`](https://sepolia.etherscan.io/address/0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E) | DAO registry + cross-contract ACL + **per-space Semaphore groups** |
+| **ShadowToken** | [`0x9a86031C…6eD5b238`](https://sepolia.etherscan.io/address/0x9a86031C1392033007eA928Fd6166B0C6eD5b238) | **Confidential FHERC20** — encrypted balances, trustless voting power |
+| **ShadowTreasury** | [`0xc7E024c8…ACf8b0db`](https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db) | Encrypted DAO treasury — `euint32` balance, encrypted solvency |
+| **ShadowDelegate** | [`0x2a896334…cF90cb5f1`](https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1) | Encrypted vote delegation pool |
+| **ShadowVote** (V1) | [`0x625b9b6c…2874EF86`](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) | Wave 1–2 core voting contract |
+
+**External dependency:** Semaphore v4 — `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D` (deployed by the Semaphore team; same address on every chain).
+
+### Verify FHE is real
+1. **Etherscan** → contract source imports `@fhenixprotocol/cofhe-contracts/FHE.sol`.
+2. **A vote tx** → input data is a `ctHash` (ciphertext handle), not a plaintext option.
+3. **`getEncryptedTally()`** → returns an FHE handle; decryption needs an EIP-712 permit.
+4. **After reveal** → only aggregate totals decrypt; individual ballots stay encrypted forever.
+
+---
+
+## 🧭 How it works
+
+```
+ Browser                         ShadowVoteV2 (Sepolia)              Fhenix CoFHE
+ ───────                         ─────────────────────               ───────────
+ 1. Pick an option
+ 2. CoFHE SDK encrypts it    ──>  3. FHE.asEuint32(input)
+    as euint32 + ZK proof
+                                 4. for each option i:
+                                    FHE.eq(vote, i)        ───────>   compute on
+                                    FHE.select(match,1,0)  ───────>   ciphertext
+                                    FHE.add(tally, inc)    ───────>   (never decrypted)
+                                 5. ballot consumed & discarded
+                                    → receipt-free, no copy kept
+
+      ═══════════ DEADLINE PASSES + QUORUM MET ═══════════
+
+                                 6. FHE.allowPublic(tally)  ──────>   unlock totals
+ 7. decryptForView(tally)   <──  8. aggregate counts only
+    (EIP-712 permit)
+
+ Individual votes are never decrypted. The voter is never identified.
+```
+
+**Anonymous path (Wave 5):** the voter generates a Semaphore membership proof,
+encrypts the ballot, and submits via the relayer — steps 3–6 run identically,
+but the contract verifies a ZK proof + nullifier instead of an address.
+
+---
+
+## 📊 ShadowDAO vs Snapshot
+
+| | Snapshot | ShadowDAO |
+|---|---|---|
+| Privacy | Optional add-on | **Mandatory, by default** |
+| Encryption | Threshold — all votes revealed after deadline | **FHE — individual votes never revealed** |
 | Tallying | Decrypt everything, count in cleartext | **Count on ciphertext, reveal only totals** |
-| After reveal | Every single vote becomes public | **Only aggregates public** |
-| Voter verification | Not possible | **Permit-based self-decrypt of own ballot** |
-| Treasury | Fully visible on Etherscan | **euint32 encrypted balance** |
-| Weighted voting | Off-chain | **FHE.mul on encrypted weights** |
-| Delegation | Public amounts | **Encrypted power pool (FHE.add)** |
-| Gas for voting | Required | **Optional (EIP-712 gasless meta-tx)** |
-| FHE operations | 0 | **16 distinct operations** |
+| Receipt-freeness | ❌ | ✅ **a vote cannot be proven or sold** |
+| Voter anonymity | ❌ | ✅ **Semaphore ZK eligibility** |
+| Treasury | Public on Etherscan | **Encrypted `euint32` balance** |
+| Weighted voting / delegation | Off-chain / public amounts | **On-chain, encrypted (`FHE.mul` / `FHE.add`)** |
+| Gasless voting | ❌ | ✅ **EIP-712 meta-tx** |
+| FHE operations | 0 | **12 primitives, 5 contracts** |
 
 ---
 
-## Challenges I ran into
+## 🏗️ Architecture
 
-**The COOP/COEP + MetaMask fight.** CoFHE SDK needs SharedArrayBuffer for WASM workers, which requires Cross-Origin headers. But `require-corp` breaks MetaMask's iframe injection. Ended up using `credentialless` instead, which works but means the SDK falls back to single-threaded mode. It's slower but actually works.
+```
+contracts/
+  ShadowVoteV2.sol     core voting — FHE tally, weighted, receipt-free, voteAnonymous
+  ShadowSpace.sol      DAO registry + ACL + Semaphore groups
+  ShadowToken.sol      confidential FHERC20 — encrypted balances -> voting power
+  ShadowTreasury.sol   encrypted treasury (euint32 balance)
+  ShadowDelegate.sol   encrypted delegation pool
+  ShadowVote.sol       Wave 1-2 core voting
+  ISemaphore.sol       minimal Semaphore v4 interface
 
-**CoFHE SDK is pre-1.0 and it shows.** The `WagmiAdapter` function signature changed between patch versions. `walletClient.getAddresses()` stopped working in some configurations. Built a fallback chain: try WagmiAdapter → catch → try direct connect → catch → retry without workers. Also built a module-level singleton so only one CoFHE client ever exists per browser session, with wallet-address and chain-ID tracking to reset it when the account switches.
+api/                   Vercel serverless functions
+  relay-vote.ts        gasless EIP-712 vote relay
+  relay-anon-vote.ts   anonymous-vote relay (address never touches chain)
+  pin-comment.ts       IPFS comment pinning (Pinata JWT server-side)
+  fetch-ipfs.ts        IPFS read with multi-gateway fallback
 
-**Gas scales linearly with options.** Each `vote()` call runs a loop: for every option, it does `FHE.eq` + `FHE.select` + `FHE.add`. A 2-option proposal costs ~1.2M gas. 5 options costs ~2.8M. 10 options pushes toward 5M. There's no way around it — the contract has to touch every encrypted tally.
-
-**Debugging encrypted state is pain.** When `FHE.add` silently does nothing because you forgot `FHE.allowThis`, there's no error. The tally just stays at zero. You can't `console.log` an `euint32`. You find out 20 minutes later when reveal shows all zeros. Had to develop a mental model of "what does the contract think it's holding" without ever being able to check.
-
-**Non-ASCII in Solidity.** Em dashes in comments broke the Solidity compiler with "Invalid character in string." Had to write a Node.js script to strip all non-ASCII from contracts before compilation.
-
-**BigInt vs Number in TypeScript.** `SHADOWVOTEV2_ADDRESS as const` created a literal type — TypeScript refused comparisons like `addr !== ZERO_ADDRESS` ("types have no overlap"). Fixed by using `as \`0x${string}\`` instead of `as const` throughout.
-
-**Permit system quirks.** CoFHE requires an active EIP-712 permit before `decryptForView` works. If you call decrypt without first calling `getOrCreateSelfPermit`, you get a cryptic "Active permit not found" error. Not documented anywhere — had to read the SDK source. Added a debounce guard so rapid clicks don't open multiple MetaMask signature dialogs.
-
----
-
-## Technologies used
-
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| FHE Engine | **Fhenix CoFHE** coprocessor | Runs FHE operations on top of standard EVM — no separate chain needed |
-| FHE SDK | **@cofhe/sdk 0.4.0** | Browser-side encryption, ZK proofs, EIP-712 permits |
-| FHE Contracts | **@fhenixprotocol/cofhe-contracts 0.1.0** | Solidity types: `euint32`, `ebool`, `InEuint32` |
-| Smart Contracts | **Solidity 0.8.25** (EVM Cancun) | 4 contracts deployed on Sepolia |
-| Frontend | **React 19** + TypeScript + **Vite 6** | 14 lazy-loaded pages, code-split |
-| Styling | **Tailwind CSS 4** + **Motion 12** | Utility-first CSS, scroll animations |
-| Wallet | **wagmi 3** + **viem 2** | Type-safe contract reads/writes, MetaMask |
-| Build | **Hardhat** + @cofhe/hardhat-plugin | Compile, deploy, test FHE contracts |
-| IPFS | **Pinata** via Vercel serverless | Comments pinned server-side, JWT never in browser |
-| Hosting | **Vercel** | COOP/COEP headers for WASM, serverless API routes |
-| Network | **Ethereum Sepolia** (11155111) | Fhenix CoFHE coprocessor active |
-| SDK | **shadowdao-sdk** | `ShadowVoteClient`, `ShadowSpaceClient`, `useShadowVote` hook |
-
----
-
-## How we built it
-
-### Phase 1 — The voting contract
-
-Started with the core question: how do you count votes without knowing what they are?
-
-The answer is a loop. For each option in a proposal, keep an encrypted counter initialized to `FHE.asEuint32(0)`. When someone votes, their choice arrives as an encrypted `euint32` from the browser. The contract checks every option: `FHE.eq(vote, optionIndex)`. If it matches, `FHE.select` returns an encrypted 1, otherwise encrypted 0. Then `FHE.add` adds that to the tally.
-
-```solidity
-for (uint8 i = 0; i < proposal.optionCount; i++) {
-    ebool isMatch = FHE.eq(option, FHE.asEuint32(i));
-    euint32 increment = FHE.select(isMatch, FHE.asEuint32(1), FHE.asEuint32(0));
-    tallies[_proposalId][i] = FHE.add(tallies[_proposalId][i], increment);
-    FHE.allowThis(tallies[_proposalId][i]);
-}
+src/                   React 19 dApp — 14 lazy-loaded pages
+  config/contract.ts   single source of truth: addresses + ABIs
+  hooks/               useAnonymousVote, useSemaphoreIdentity, useCofhe, useVote ...
+sdk/                   shadowdao-sdk — reusable TypeScript clients + React hook
+docs/                  COERCION-RESISTANCE.md (threat model) · WAVE5-DEPLOY.md
 ```
 
-### Phase 2 — DAO Spaces + cross-contract ACL
-
-Built ShadowSpace.sol as a second contract — on-chain DAO registry with 8 crypto-specific categories. Wave 2 upgraded with `leaveSpace`, `archiveSpace`, `setShadowVoteContract` ACL (fixes unbounded `incrementProposalCount`), and space-gated voting: `vote()` enforces membership via cross-contract call to `IShadowSpace.isSpaceMember()`. Added three FHE analytics functions: `FHE.gte` quorum check, `FHE.max` winner detection, `FHE.sub` vote differential.
-
-### Phase 3 — Encrypted Treasury + Weighted Voting
-
-`ShadowTreasury.sol`: DAO balance as `euint32` (milliETH units). `deposit()` via `FHE.add`. `withdraw()` with `FHE.gte` encrypted solvency check + `FHE.select` safe subtraction. Allocations linked to ShadowVote proposals — execute automatically after reveal + quorum.
-
-`ShadowVoteV2.sol`: weighted voting via `FHE.mul(vote, power)`. Admin sets encrypted voting power per address. IPFS description hash stored as `bytes32` per proposal.
-
-### Phase 4 — Delegation + Discussion + Analytics
-
-`ShadowDelegate.sol`: `delegate(to, encryptedPower)` accumulates power into delegate's encrypted pool via `FHE.add`. `undelegate()` zeroes contribution with `FHE.select`. Leaderboard shows delegation counts (public) without revealing amounts.
-
-On-chain discussion: `postComment(proposalId, bytes32)` stores IPFS CID hashes per proposal. Comment text served via Vercel serverless functions → Pinata gateway — Pinata JWT never touches the browser.
-
-Analytics: participation line chart, quorum donut, category bars, voter heatmap, top voters — all computed from `getLogs`, no indexer, no backend.
-
-### Phase 5 — SDK + Gasless + PWA
-
-`voteWithSignature()` in ShadowVoteV2: EIP-712 signed meta-transaction, relayer pays gas, voter signs offline. Nonce per address prevents replay.
-
-`shadowdao-sdk` npm package: `ShadowVoteClient`, `ShadowSpaceClient`, `useShadowVote` React hook, full TypeScript types. Any team can integrate FHE voting into their project.
-
-PWA: `manifest.json` + service worker + offline fallback. All 14 routes lazy-loaded via `React.lazy` with `ErrorBoundary` production crash recovery.
+**No backend database.** All governance state lives on-chain or on IPFS; only
+theme/preferences are in `localStorage`.
 
 ---
 
-## FHE operations — 16 across 4 contracts
+## 📈 Progress across waves
 
-| # | Operation | Where | What it does |
-|---|-----------|-------|-------------|
-| 1 | `FHE.asEuint32()` | Vote, V2 | Convert browser-encrypted input to on-chain FHE type |
-| 2 | `FHE.eq()` | Vote, V2 | Encrypted equality: does this vote match option i? |
-| 3 | `FHE.select()` | Vote, V2, Delegate | Encrypted if/else; safe zero-out on undelegate |
-| 4 | `FHE.add()` | All 4 contracts | Homomorphic addition: tally, treasury balance, delegation pool |
-| 5 | `FHE.allowThis()` | All 4 contracts | Contract retains access to ciphertext across transactions |
-| 6 | `FHE.allowSender()` | Vote, V2, Treasury | Permit-gated: only msg.sender can decrypt |
-| 7 | `FHE.allowPublic()` | Vote, V2 | Unlock aggregate tallies for public decryption after reveal |
-| 8 | `FHE.gte()` | Vote, V2, Treasury | Encrypted ≥: quorum check + solvency gate on withdraw |
-| 9 | `FHE.max()` | Vote, V2 | Find leading option without revealing any tally |
-| 10 | `FHE.sub()` | Vote, V2, Treasury, Delegate | Subtraction: margin, balance decrement, power removal |
-| 11 | `FHE.mul()` | ShadowVoteV2 | Weighted voting: multiply ballot by encrypted voting power |
-| 12 | `FHE.add` (treasury deposit) | ShadowTreasury | `FHE.add(balance, units)` — balance grows on ciphertext |
-| 13 | `FHE.gte` (solvency) | ShadowTreasury | `FHE.gte(balance, amount)` before any withdrawal |
-| 14 | `FHE.sub` (balance) | ShadowTreasury | `FHE.sub(balance, units)` on withdraw and allocation execution |
-| 15 | `FHE.add` (delegation) | ShadowDelegate | `FHE.add(pool, power)` accumulates delegated power |
-| 16 | `FHE.select` (undelegate) | ShadowDelegate | `FHE.select(solvent, FHE.sub(pool, power), zero)` safe removal |
+Each wave builds directly on the last — not isolated features.
 
-**Encrypted types:** `euint32` (tallies, balances, voting power), `ebool` (comparisons), `InEuint32` (browser inputs)
+| Wave | Delivered | FHE depth |
+|---|---|---|
+| **1 — Core FHE voting** | `ShadowVote` + `ShadowSpace`: encrypted ballots, homomorphic tally, permissionless reveal | 10 ops |
+| **2 — Spaces + ACL** | Space-gated voting via cross-contract membership; encrypted analytics (`gte`, `max`, `sub`) | 13 ops |
+| **3 — Treasury + weighted** | `ShadowTreasury` (encrypted balance); `ShadowVoteV2` weighted voting (`FHE.mul`), IPFS proposals | 14 ops |
+| **4 — Delegation + analytics** | `ShadowDelegate` (encrypted power pool); on-chain discussion; analytics dashboard | 16 ops |
+| **5 — Coercion resistance** | Receipt-free ballots, anonymous Semaphore ZK voting, anonymous relayer, `ShadowToken` confidential FHERC20; SDK, gasless, PWA | 5 FHE contracts |
 
 ---
 
-## What requires Fhenix FHE
+## 🛠️ Engineering notes
 
-| Feature | FHE Operations | Without FHE |
-|---------|---------------|------------|
-| Casting a vote | `asEuint32`, `eq`, `select`, `add`, `allowThis`, `allowSender` | Option visible on-chain |
-| Weighted ballot | `mul(vote, power)` | Power amounts visible |
-| Revealing results | `allowPublic` | Tallies exposed before deadline |
-| Verifying own vote | `allowSender` + permit decrypt | Any observer could check |
-| Quorum check | `gte(totalVotes, quorum)` | Vote count visible during voting |
-| Winner detection | `max(tally[0], tally[1])` | Leading option visible mid-vote |
-| Treasury balance | `add`, `gte`, `sub`, `allowSender` | Balance visible on Etherscan |
-| Delegation pool | `add(pool, power)`, `select` zero-out | Power amounts visible |
+Real problems solved building on a pre-1.0 FHE stack:
 
-### What works without FHE
-Creating proposals, reading metadata (deadline, quorum, voter count), `hasUserVoted` boolean, Space creation/membership, comment authorship timestamps.
+- **COOP/COEP vs MetaMask** — CoFHE's WASM needs `SharedArrayBuffer` (cross-origin isolation), but `require-corp` breaks MetaMask's iframe. Solved with `credentialless` + a single-threaded fallback.
+- **Debugging encrypted state** — you cannot `console.log` a `euint32`. A forgotten `FHE.allowThis` fails *silently* — the tally just stays zero. Forced a discipline of reasoning about ciphertext access before every deploy.
+- **Field-size mismatch** — a CoFHE `ctHash` is a full 256-bit value; a Semaphore proof message must be a SNARK field element. The anonymous-vote proof binds `scope = message = proposalId` (a small, always-valid field element) instead.
+- **Gas scales with options** — each option adds 3 FHE ops to the vote loop; batched RPC reads (50/call) and TTL caching keep the dApp responsive.
 
 ---
 
-## User experience
-
-**1. Connect** — MetaMask on Sepolia. Wrong network auto-detected with one-click switch.
-
-**2. Dashboard** — Active proposals, live notification bell (VoteCast / ProposalCreated / ResultsRevealed events), personal stats. Activity Feed: live blockchain event stream, auto-refresh every 30s.
-
-**3. Create** — 5-step wizard: title + IPFS description → Space selector + weighted voting toggle → options (with templates: Yes/No, Approve/Reject/Abstain) → duration + quorum → review + deploy. After MetaMask confirms, `ProposalCreated` event is parsed for the proposalId and a shareable link is generated.
-
-**4. Vote** — Select option → "Encrypt & Submit" → FHE step visualizer shows each operation in sequence (asEuint32 → eq → select → mul → add → allowSender). Confetti on success. The encrypted tuple `{ctHash, securityZone, utype, signature}` is what goes on-chain — the option index is never transmitted in plaintext.
-
-**5. Gasless Vote** — "Vote without gas" toggle → relayer submits EIP-712 signed meta-transaction, voter pays zero gas.
-
-**6. Verify** — After voting, "Verify My Vote (FHE Decrypt)" → EIP-712 permit → `getMyVote()` → decrypt → "You voted: Option 2". Only visible to the voter.
-
-**7. Wait** — Live countdown timer (days / hours / minutes / seconds). No intermediate tallies. Nobody sees how the vote is going.
-
-**8. Reveal** — After deadline + quorum, anyone clicks "Reveal Results" → `FHE.allowPublic()` on each tally → decrypt with permit → animated bar charts with winner badge → Export JSON / Export CSV.
-
-**9. Spaces** — My Spaces / Explore tabs. Create, join, leave, archive. Space-gated proposals visible inline. SpaceDetail: live member list, linked proposals with status.
-
-**10. Treasury** — Deposit ETH (FHE.add), decrypt balance with EIP-712 permit (4-step reveal process: getTreasuryBalance tx → FHE.allowSender → EIP-712 permit → decryptForView). Propose allocations linked to proposals. Execute after vote passes.
-
-**11. Delegation** — Set delegate address, encrypted power transferred via `FHE.add`. Undelegate reclaims via `FHE.select`. Leaderboard shows delegation count without revealing power amounts.
-
-**12. Analytics** — Participation line chart, quorum donut, category bar chart, voter heatmap, top voters leaderboard. All from `getLogs`, no indexer, no backend.
-
-**13. Discussion** — Post IPFS-pinned comments on any V2 proposal. CID stored on-chain. Content served via serverless IPFS gateway with schema validation and CDN caching.
-
-**14. Settings** — Dark/light theme, voting defaults (quorum, duration), privacy settings, notification toggles. All persisted to localStorage. FHE shielded voting always active — shown as informational badge, not a toggle.
-
----
-
-## What we learned
-
-FHE makes truly private voting possible on-chain in a way that threshold encryption fundamentally can't. With threshold, you're trusting a committee. With FHE, there's no committee — the math itself prevents disclosure.
-
-But it's not free. Gas costs scale with the number of FHE operations. Each option in a vote adds 3 operations. Building for real-world DAOs with thousands of proposals means careful batching (we fixed unbounded `Promise.all` reads to batch 50 at a time) and TTL caching (30s for proposals, 60s for spaces).
-
-The CoFHE SDK is powerful but early-stage. Documentation is thin, error messages are cryptic, behavior changes between minor versions. The singleton pattern — one `_client` per browser session, reset only on wallet/chain change — was essential for correctness and performance.
-
-Debugging encrypted state is a completely different discipline. You can't print values. You can't inspect storage. You write the logic, deploy, test end-to-end, and find out if it works 20 minutes later when you try to decrypt. Forced us to think very carefully before writing.
-
----
-
-## Deployed contracts — Ethereum Sepolia
-
-| Contract | Address | Wave | FHE Ops |
-|----------|---------|------|---------|
-| **ShadowVote.sol** | [`0x625b9b6cBd467E69b4981457e7235EBd2874EF86`](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) | 1–2 | 10: asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender |
-| **ShadowSpace.sol** | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | 1–2 | — (DAO registry, cross-contract ACL) |
-| **ShadowVoteV2.sol** | [`0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA`](https://sepolia.etherscan.io/address/0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA) | 3–5 | +FHE.mul (weighted), IPFS desc, discussion, EIP-712 gasless |
-| **ShadowTreasury.sol** | [`0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db`](https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db) | 3 | euint32 balance, FHE.add/gte/sub/select, FHE.allowSender |
-| **ShadowDelegate.sol** | [`0x2a896334a0B1263f397A45844a307D4cF90cb5f1`](https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1) | 4 | FHE.add pool, FHE.select zero-out, FHE.allowSender |
-
-Chain ID 11155111 · Solidity 0.8.25 · EVM Cancun
-
-### How to verify FHE is real
-
-1. **Etherscan** — View [contract source](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) → imports `@fhenixprotocol/cofhe-contracts/FHE.sol`
-2. **Vote transaction** — Check input data → `ctHash` (encrypted handle), not a plaintext number
-3. **Tally read** — Call `getEncryptedTally()` → returns FHE handle. Decrypt requires EIP-712 permit
-4. **After reveal** — Only aggregate totals visible; individual votes remain as encrypted handles forever
-5. **Treasury** — `getEthBalance()` is public; `getTreasuryBalance()` requires permit and a mined tx to set `FHE.allowSender`
-
----
-
-## Wave completion
-
-### Wave 1 ✅ — Core FHE Voting
-ShadowVote.sol + ShadowSpace.sol deployed. FHE-encrypted ballots, homomorphic tallying, permissionless reveal, "Verify My Vote" via `FHE.allowSender`. **10 FHE operations.**
-
-### Wave 2 ✅ — Spaces + Cross-Contract ACL
-Space-gated voting — `vote()` enforces `IShadowSpace.isSpaceMember()` on-chain. Encrypted analytics: `FHE.gte`, `FHE.max`, `FHE.sub`. 60 E2E tests on Sepolia. Space lifecycle (join, leave, archive).
-
-### Wave 3 ✅ — Treasury + Weighted Voting
-ShadowTreasury.sol: `euint32` encrypted balance, deposit/withdraw/allocate. ShadowVoteV2.sol: `FHE.mul` weighted voting, IPFS description hash. FHE visualizer page. **14 FHE operations.**
-
-### Wave 4 ✅ — Delegation + Analytics + Discussion
-ShadowDelegate.sol: encrypted power delegation pool. On-chain IPFS comment hashes. Analytics dashboard from `getLogs`. Activity feed, proposal search with date range filter, pagination. **16 FHE operations.**
-
-### Wave 5 ✅ — SDK + Gasless + PWA
-`voteWithSignature()` EIP-712 meta-tx. `shadowdao-sdk` npm package with TypeScript clients + React hook. PWA service worker. Lazy-loaded routes. Error boundary. `TEMPLATE.md` integration guide.
-
----
-
-## Run locally
+## ▶️ Run locally
 
 ```bash
 git clone https://github.com/plankton1212/shadowdao.git
@@ -315,54 +306,28 @@ npm run dev
 
 Node.js 18+, MetaMask on Sepolia with test ETH ([faucet](https://www.alchemy.com/faucets/ethereum-sepolia)).
 
-For Vercel API routes (IPFS comment pinning) to work locally, add to `.env.local`:
-
-```
-PINATA_JWT=your_pinata_jwt
-PINATA_GATEWAY=https://gateway.pinata.cloud
-ALLOWED_ORIGIN=http://localhost:5173
-```
-
-### Run contract tests
-
 ```bash
-# Set up .env with PRIVATE_KEY and PRIVATE_KEY_2
-npm run test:live
+npm run lint        # typecheck
+npm run compile     # compile contracts (Hardhat + CoFHE plugin)
+npm run build       # production build
+npm test            # E2E contract tests on Sepolia
 ```
 
-Tests cover proposal creation, voting, reveal, cancel, extend deadline, quorum checks, double-vote prevention, Space lifecycle, cross-account authorization, FHE analytics functions.
+Contract tests need `.env` with `PRIVATE_KEY`, `PRIVATE_KEY_2`, `SEPOLIA_RPC_URL`.
+Deploying a fresh stack: see **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)**.
 
 ---
 
-## Architecture
+## 📚 Docs
 
-```
-contracts/
-  ShadowVote.sol       ← Wave 1-2: core FHE voting + space-gated
-  ShadowSpace.sol      ← Wave 1-2: DAO registry + ACL
-  ShadowVoteV2.sol     ← Wave 3-5: weighted, IPFS, discussion, gasless
-  ShadowTreasury.sol   ← Wave 3: encrypted treasury
-  ShadowDelegate.sol   ← Wave 4: encrypted delegation
-
-api/
-  pin-comment.ts       ← Vercel Function: Pinata IPFS pin (JWT server-side)
-  fetch-ipfs.ts        ← Vercel Function: IPFS gateway with 4-gateway fallback
-  _ratelimit.ts        ← Sliding-window rate limiter (10/60s pin, 60/60s fetch)
-  _utils.ts            ← CIDv0 ↔ bytes32 conversion (inline base58)
-
-src/
-  config/contract.ts   ← Single swap point: all 4 contract addresses + ABIs
-  hooks/               ← useVote, useReveal, useProposals, useSpaces, useCofhe ...
-  pages/               ← 14 pages, all React.lazy code-split
-  components/UI.tsx    ← Pure UI components, zero business logic
-
-sdk/                   ← shadowdao-sdk: ShadowVoteClient, ShadowSpaceClient, hook
-```
-
-**Data flow: everything from blockchain or IPFS.** No backend database. Settings and theme in localStorage. Governance data (proposals, votes, spaces, comments) exclusively on-chain or IPFS.
+- **[docs/DEEP-DIVE.md](docs/DEEP-DIVE.md)** — extended technical deep-dive: build story, engineering challenges, full FHE operation table, the 14-page UX walkthrough
+- **[docs/COERCION-RESISTANCE.md](docs/COERCION-RESISTANCE.md)** — full threat model: actors, guarantees, honest residual risks
+- **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)** — deploy & verify runbook
+- **[HACKATHON.md](HACKATHON.md)** — buildathon submission summary
+- **[TEMPLATE.md](TEMPLATE.md)** — adapt ShadowDAO to any FHE voting contract
 
 ---
 
 ## License
 
-MIT
+MIT — built for the Fhenix Privacy-by-Design dApp Buildathon.

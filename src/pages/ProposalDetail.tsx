@@ -15,7 +15,6 @@ import {
   XCircle,
   Clock,
   CalendarPlus,
-  Eye,
   Download,
   MessageSquare,
   Send,
@@ -27,9 +26,10 @@ import { useAccount } from 'wagmi';
 import { useProposals } from '../hooks/useProposals';
 import { useVote } from '../hooks/useVote';
 import { useGaslessVote } from '../hooks/useGaslessVote';
+import { useAnonymousVote } from '../hooks/useAnonymousVote';
+import { useSemaphoreIdentity } from '../hooks/useSemaphoreIdentity';
 import { useReveal } from '../hooks/useReveal';
 import { useProposalAdmin } from '../hooks/useProposalAdmin';
-import { useVerifyVote } from '../hooks/useVerifyVote';
 import { useSpaces } from '../hooks/useSpaces';
 import { etherscanTx, SHADOWVOTE_ADDRESS, SHADOWVOTEV2_ADDRESS, SHADOWVOTEV2_ABI } from '../config/contract';
 import { usePublicClient, useWalletClient, useChainId } from 'wagmi';
@@ -66,8 +66,9 @@ export const ProposalDetail = () => {
   const { gaslessVote, state: gaslessState, txHash: gaslessTxHash, error: gaslessError, reset: resetGasless } = useGaslessVote();
   const { revealResults, fetchDecryptedResults, clearDecryptError, isRevealing, results, error: revealError, isPermitError: revealPermitError } = useReveal();
   const { cancelProposal, extendDeadline, isLoading: adminLoading, error: adminError } = useProposalAdmin();
-  const { verifyMyVote, verifiedOption, isVerifying, error: verifyError, isPermitError: verifyPermitError, reset: resetVerify } = useVerifyVote();
   const { spaces, checkIsMember } = useSpaces();
+  const { castAnonymousVote, state: anonState, error: anonError } = useAnonymousVote();
+  const { registerIdentity, checkRegistered, isRegistering, error: registerError } = useSemaphoreIdentity();
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
@@ -79,6 +80,7 @@ export const ProposalDetail = () => {
   const isVotingRef = useRef(false); // synchronous guard against double-click
   const [showConfetti, setShowConfetti] = useState(false);
   const [useGasless, setUseGasless] = useState(false);
+  const [isRegistered, setIsRegistered] = useState<boolean | null>(null); // ZK voting identity (anonymous proposals)
 
   // Validate URL param before BigInt conversion — BigInt('abc') throws SyntaxError
   const proposalId: bigint | null = (() => {
@@ -86,8 +88,6 @@ export const ProposalDetail = () => {
   })();
   const proposal = proposalId !== null ? proposals.find((p) => p.id === proposalId) : undefined;
 
-  // Reset verify state when navigating between proposals
-  useEffect(() => { resetVerify(); }, [proposalId]); // eslint-disable-line react-hooks/exhaustive-deps
   const countdown = useCountdown(proposal?.deadline || new Date());
 
   // Check if user has voted + space membership
@@ -96,12 +96,14 @@ export const ProposalDetail = () => {
       if (!proposal || proposalId === null) return;
       try {
         setCheckingVote(true);
-        const [voted, memberStatus] = await Promise.all([
+        const [voted, memberStatus, registered] = await Promise.all([
           checkHasVoted(proposalId),
           proposal.spaceGated ? checkIsMember(proposal.spaceId) : Promise.resolve(null),
+          proposal.isAnonymous ? checkRegistered(proposal.spaceId) : Promise.resolve(null),
         ]);
         setHasVoted(voted);
         setIsSpaceMember(memberStatus);
+        setIsRegistered(registered);
       } catch (err) {
         console.warn('[ShadowDAO] Failed to check vote status:', err);
       } finally {
@@ -109,7 +111,7 @@ export const ProposalDetail = () => {
       }
     };
     check();
-  }, [proposal, proposalId, checkHasVoted, checkIsMember]);
+  }, [proposal, proposalId, checkHasVoted, checkIsMember, checkRegistered]);
 
   // Fetch decrypted results if revealed
   useEffect(() => {
@@ -196,6 +198,29 @@ export const ProposalDetail = () => {
       isVotingRef.current = false;
       setIsVoting(false);
     }
+  };
+
+  const handleAnonymousVote = async () => {
+    if (selectedOption === null || isVotingRef.current || !proposal) return;
+    isVotingRef.current = true;
+    setIsVoting(true);
+    try {
+      const success = await castAnonymousVote(proposalId!, proposal.spaceId, selectedOption);
+      if (success) {
+        setHasVoted(true);
+        setShowConfetti(true);
+        await refetch();
+      }
+    } finally {
+      isVotingRef.current = false;
+      setIsVoting(false);
+    }
+  };
+
+  const handleRegisterIdentity = async () => {
+    if (!proposal) return;
+    const ok = await registerIdentity(proposal.spaceId);
+    if (ok) setIsRegistered(true);
   };
 
   const handleReveal = async () => {
@@ -434,63 +459,120 @@ export const ProposalDetail = () => {
           {/* Voting Section */}
           {canVote && (
             <Card hover={false} className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold">Cast Your Vote</h3>
-                {/* Gasless toggle */}
-                <button
-                  onClick={() => setUseGasless(g => !g)}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 rounded-badge text-xs font-bold border transition-all',
-                    useGasless
-                      ? 'bg-tertiary-accent/10 border-tertiary-accent/30 text-tertiary-accent'
-                      : 'bg-surface-highlight border-default text-text-muted hover:text-text-primary'
-                  )}
-                  title="Gasless voting — you sign, relayer pays gas (EIP-712 meta-tx)"
-                >
-                  <Zap className="w-3 h-3" />
-                  {useGasless ? 'Gasless ON' : 'Gasless OFF'}
-                </button>
-              </div>
-
-              {useGasless && (
-                <div className="p-3 bg-tertiary-accent/5 border border-tertiary-accent/20 rounded-xl text-xs text-tertiary-accent flex items-start gap-2">
-                  <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>You sign an EIP-712 message — the relayer submits the transaction and pays gas. Your vote is still FHE-encrypted before signing.</span>
+              {proposal.isAnonymous && isRegistered === false ? (
+                /* Anonymous proposal — voter must register a ZK identity first */
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-bold">Anonymous Voting</h3>
+                    <Badge variant="info" className="text-[10px]">Wave 5 · ZK</Badge>
+                  </div>
+                  <div className="p-3 bg-surface-highlight rounded-xl text-xs text-text-secondary flex items-start gap-2">
+                    <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary-accent" />
+                    <span>This proposal uses zero-knowledge voting. Register a one-time voting identity for this space — you then vote without ever revealing your address or which member you are.</span>
+                  </div>
+                  {registerError && <p className="text-xs text-danger">{registerError}</p>}
+                  <Button onClick={handleRegisterIdentity} disabled={isRegistering} className="w-full h-12 gap-2">
+                    {isRegistering ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                    {isRegistering ? 'Registering identity…' : 'Register Anonymous Voting Identity'}
+                  </Button>
                 </div>
-              )}
-
-              <div className="space-y-3">
-                {optionLabels.map((option, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedOption(i)}
-                    className={cn(
-                      'w-full p-4 rounded-input border-2 text-left transition-all flex items-center justify-between',
-                      selectedOption === i
-                        ? 'border-primary-accent bg-surface-highlight'
-                        : 'border-default bg-white hover:border-primary-accent/30'
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold">Cast Your Vote</h3>
+                    {proposal.isAnonymous ? (
+                      <span className="flex items-center gap-2 px-3 py-1.5 rounded-badge text-xs font-bold border bg-tertiary-accent/10 border-tertiary-accent/30 text-tertiary-accent">
+                        <Shield className="w-3 h-3" /> Anonymous · ZK
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setUseGasless(g => !g)}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 rounded-badge text-xs font-bold border transition-all',
+                          useGasless
+                            ? 'bg-tertiary-accent/10 border-tertiary-accent/30 text-tertiary-accent'
+                            : 'bg-surface-highlight border-default text-text-muted hover:text-text-primary'
+                        )}
+                        title="Gasless voting — you sign, relayer pays gas (EIP-712 meta-tx)"
+                      >
+                        <Zap className="w-3 h-3" />
+                        {useGasless ? 'Gasless ON' : 'Gasless OFF'}
+                      </button>
                     )}
-                  >
-                    <span className="font-semibold">{option}</span>
-                    <div
-                      className={cn(
-                        'w-5 h-5 rounded-full border-2 flex items-center justify-center',
-                        selectedOption === i ? 'border-primary-accent' : 'border-default'
-                      )}
-                    >
-                      {selectedOption === i && <div className="w-2.5 h-2.5 bg-primary-accent rounded-full" />}
+                  </div>
+
+                  {proposal.isAnonymous ? (
+                    <div className="p-3 bg-tertiary-accent/5 border border-tertiary-accent/20 rounded-xl text-xs text-tertiary-accent flex items-start gap-2">
+                      <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>Your eligibility is proven in zero knowledge (Semaphore). The contract never sees your address — the vote is anonymous and receipt-free.</span>
                     </div>
-                  </button>
-                ))}
+                  ) : useGasless && (
+                    <div className="p-3 bg-tertiary-accent/5 border border-tertiary-accent/20 rounded-xl text-xs text-tertiary-accent flex items-start gap-2">
+                      <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>You sign an EIP-712 message — the relayer submits the transaction and pays gas. Your vote is still FHE-encrypted before signing.</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {optionLabels.map((option, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedOption(i)}
+                        className={cn(
+                          'w-full p-4 rounded-input border-2 text-left transition-all flex items-center justify-between',
+                          selectedOption === i
+                            ? 'border-primary-accent bg-surface-highlight'
+                            : 'border-default bg-white hover:border-primary-accent/30'
+                        )}
+                      >
+                        <span className="font-semibold">{option}</span>
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded-full border-2 flex items-center justify-center',
+                            selectedOption === i ? 'border-primary-accent' : 'border-default'
+                          )}
+                        >
+                          {selectedOption === i && <div className="w-2.5 h-2.5 bg-primary-accent rounded-full" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    onClick={proposal.isAnonymous ? handleAnonymousVote : useGasless ? handleGaslessVote : handleVote}
+                    disabled={selectedOption === null || isVoting}
+                    className="w-full h-14 text-lg gap-2"
+                  >
+                    {proposal.isAnonymous ? <Shield className="w-5 h-5" /> : useGasless ? <Zap className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                    {proposal.isAnonymous ? 'Vote Anonymously (ZK)' : useGasless ? 'Sign & Submit (Gasless)' : 'Encrypt & Submit Vote'}
+                  </Button>
+                </>
+              )}
+            </Card>
+          )}
+
+          {/* Anonymous vote progress (Semaphore ZK flow) */}
+          {proposal.isAnonymous && anonState !== 'idle' && anonState !== 'success' && (
+            <Card hover={false} className="flex items-start gap-3">
+              {anonState === 'error'
+                ? <XCircle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+                : <Loader2 className="w-5 h-5 animate-spin text-primary-accent shrink-0 mt-0.5" />}
+              <div className="text-sm">
+                <span className="font-bold">
+                  {anonState === 'error' ? 'Anonymous vote failed' : 'Casting anonymous vote…'}
+                </span>
+                {anonState !== 'error' && (
+                  <span className="text-text-muted ml-2">
+                    {anonState === 'initializing' && 'initializing FHE'}
+                    {anonState === 'identity' && 'deriving your ZK identity'}
+                    {anonState === 'building-group' && 'reconstructing the space group'}
+                    {anonState === 'proving' && 'generating zero-knowledge proof'}
+                    {anonState === 'encrypting' && 'encrypting ballot (FHE)'}
+                    {anonState === 'submitting' && 'submitting transaction'}
+                    {anonState === 'confirming' && 'waiting for confirmation'}
+                  </span>
+                )}
+                {anonError && <p className="text-xs text-danger mt-1">{anonError}</p>}
               </div>
-              <Button
-                onClick={useGasless ? handleGaslessVote : handleVote}
-                disabled={selectedOption === null || isVoting}
-                className="w-full h-14 text-lg gap-2"
-              >
-                {useGasless ? <Zap className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
-                {useGasless ? 'Sign & Submit (Gasless)' : 'Encrypt & Submit Vote'}
-              </Button>
             </Card>
           )}
 
@@ -702,52 +784,20 @@ export const ProposalDetail = () => {
                   <Lock className="w-4 h-4" /> Results will be available after the deadline. Come back to reveal and see the outcome.
                 </div>
 
-                {/* Verify My Vote */}
-                {hasVoted && verifiedOption === null && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => verifyMyVote(proposalId)}
-                    disabled={isVerifying}
-                    className="w-full gap-2"
-                  >
-                    {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                    Verify My Vote (FHE Decrypt)
-                  </Button>
-                )}
-                {verifiedOption !== null && (
+                {/* Wave 5: receipt-free participation confirmation (no vote-content decryption) */}
+                {hasVoted && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-3 bg-surface-highlight rounded-xl text-center space-y-1"
+                    className="p-3 bg-surface-highlight rounded-xl text-center space-y-1.5"
                   >
-                    <div className="text-xs text-text-muted uppercase font-bold">Your Encrypted Vote</div>
-                    <div className="font-bold text-primary-accent">
-                      Option {verifiedOption + 1}
+                    <div className="flex items-center justify-center gap-1.5 font-bold text-success">
+                      <CheckCircle2 className="w-4 h-4" /> Your vote is recorded
                     </div>
                     <div className="flex items-center justify-center gap-1 text-[10px] text-text-muted">
-                      <Shield className="w-3 h-3" /> Decrypted via FHE permit — only you can see this
+                      <Lock className="w-3 h-3" /> Receipt-free — no one, not even you, can prove which option you chose
                     </div>
                   </motion.div>
-                )}
-                {verifyError && (
-                  verifyPermitError ? (
-                    <div className="p-3 bg-warning/10 border border-warning/30 rounded-xl space-y-2 text-left">
-                      <p className="text-xs text-warning font-medium">{verifyError}</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => verifyMyVote(proposalId)}
-                        disabled={isVerifying}
-                        className="gap-2 text-warning border-warning/40 hover:bg-warning/10"
-                      >
-                        {isVerifying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
-                        Re-sign &amp; Retry
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-danger text-center">{verifyError}</p>
-                  )
                 )}
               </div>
             </Card>

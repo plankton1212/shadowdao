@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, Database, ArrowRight, CheckCircle2, Eye, EyeOff, Clock, Cpu, Zap, Globe } from 'lucide-react';
+import { Shield, Lock, Database, ArrowRight, CheckCircle2, EyeOff, Clock, Cpu, Zap, Globe, XCircle } from 'lucide-react';
 import { Card, Badge, PageWrapper, Navbar, Button } from '../components/UI';
 import { cn } from '../utils';
 
@@ -57,14 +57,14 @@ const FHE_STEPS = [
     ops: ['tally[i] = FHE.add(tally[i], inc)', 'FHE.allowThis(tally[i]) — contract retains access'],
   },
   {
-    id: 'allowsender',
-    label: '6. FHE.allowSender',
-    sublabel: 'Permit-gated self-verify',
-    desc: 'Voter\'s ballot stored; only they can decrypt via EIP-712 permit.',
+    id: 'receiptfree',
+    label: '6. Receipt-Free',
+    sublabel: 'ballot discarded',
+    desc: 'The ballot ciphertext is consumed into the tally and discarded. No per-voter copy is stored and no decrypt permit is granted — so nobody, not even the voter, can prove how they voted.',
     color: '#E8A408',
     bg: '#FEF3CD',
-    icon: Eye,
-    ops: ['userVotes[id][voter] = option', 'FHE.allowSender(vote) — only voter can decrypt'],
+    icon: EyeOff,
+    ops: ['ballot consumed by FHE.add into tally, then dropped', 'no userVotes mapping — no decryptable copy kept', 'no FHE.allowSender on the ballot — no receipt to sell'],
   },
   {
     id: 'allowpublic',
@@ -201,7 +201,7 @@ const FHE_OPS_TABLE = [
   { op: 'FHE.select()', wave: 1, where: 'vote(), ShadowDelegate', purpose: 'Encrypted if/else: increment 1 or 0; zero-out delegation' },
   { op: 'FHE.add()', wave: 1, where: 'vote(), checkQuorum, Treasury', purpose: 'Homomorphic addition: tally grows without decryption' },
   { op: 'FHE.allowThis()', wave: 1, where: 'everywhere', purpose: 'Contract retains access to ciphertext across transactions' },
-  { op: 'FHE.allowSender()', wave: 1, where: 'vote(), getTreasuryBalance', purpose: 'Permit-gated: only msg.sender can decrypt this handle' },
+  { op: 'FHE.allowSender()', wave: 1, where: 'checkQuorumEncrypted, getTreasuryBalance', purpose: 'Permit-gated decryption of aggregate handles only — never an individual ballot' },
   { op: 'FHE.allowPublic()', wave: 1, where: 'revealResults()', purpose: 'Unlock aggregate tallies for public decryption after deadline' },
   { op: 'FHE.gte()', wave: 2, where: 'checkQuorumEncrypted, withdraw', purpose: 'Encrypted ≥ comparison: quorum check + solvency gate' },
   { op: 'FHE.max()', wave: 2, where: 'getEncryptedMaxTally()', purpose: 'Find leading option without revealing any tally value' },
@@ -213,6 +213,84 @@ const FHE_OPS_TABLE = [
   { op: 'FHE.add (aggregate)', wave: 4, where: 'ShadowDelegate.delegate', purpose: 'Accumulate delegated power into delegate pool' },
   { op: 'FHE.select (undelegate)', wave: 4, where: 'ShadowDelegate.undelegate', purpose: 'Safe zero-out of delegator contribution on undelegate' },
 ];
+
+// ─── Receipt-Free interactive demo ────────────────────────────────────────────
+
+function ReceiptFreeDemo() {
+  const OPTIONS = ['Treasury Grant A', 'Treasury Grant B', 'Abstain'];
+  const ATTEMPTS = [
+    { label: 'Call getMyVote(proposalId) on the contract', result: 'Function does not exist — removed in Wave 5.' },
+    { label: 'Read your ballot from contract storage', result: 'No userEncryptedVotes mapping — nothing was ever stored.' },
+    { label: 'Decrypt the ciphertext with your FHE permit', result: 'The contract granted no allowSender permit on the ballot — CoFHE refuses to decrypt.' },
+  ];
+  const [choice, setChoice] = useState<number | null>(null);
+  const [revealed, setRevealed] = useState(0);
+
+  const pick = (i: number) => { setChoice(i); setRevealed(0); };
+
+  return (
+    <Card hover={false} className="p-6 space-y-5">
+      <div className="space-y-1">
+        <h3 className="text-lg font-bold">Try it: cast a vote, then try to prove it</h3>
+        <p className="text-sm text-text-secondary">A coercion-resistant ballot leaves you no receipt. See for yourself.</p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-xs font-bold uppercase text-text-muted">1 · Cast your (simulated) vote</div>
+        <div className="flex flex-wrap gap-2">
+          {OPTIONS.map((o, i) => (
+            <button key={o} onClick={() => pick(i)}
+              className={cn('px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all',
+                choice === i ? 'border-primary-accent bg-surface-highlight text-primary-accent' : 'border-default hover:border-primary-accent/40')}>
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {choice !== null && (
+        <>
+          <div className="p-3 bg-surface-highlight rounded-xl flex items-start gap-2 text-sm">
+            <Lock className="w-4 h-4 text-primary-accent shrink-0 mt-0.5" />
+            <span>Encrypted in your browser → <code className="font-mono text-xs">ctHash 0x{(0x8f3a2c + choice * 0x4d1).toString(16)}…</code> → added to the encrypted tally. The plaintext is gone.</span>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs font-bold uppercase text-text-muted">2 · Now try to prove how you voted</div>
+            <Button size="sm" variant="outline" onClick={() => setRevealed(r => Math.min(r + 1, ATTEMPTS.length))}
+              disabled={revealed >= ATTEMPTS.length} className="gap-2">
+              <Zap className="w-4 h-4" />
+              {revealed === 0 ? 'Attempt to prove your vote' : revealed >= ATTEMPTS.length ? 'Every attack exhausted' : 'Try the next attack'}
+            </Button>
+            <div className="space-y-2">
+              {ATTEMPTS.slice(0, revealed).map((a) => (
+                <div key={a.label} className="p-3 bg-danger/5 border border-danger/15 rounded-xl flex items-start gap-2">
+                  <XCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-medium">{a.label}</div>
+                    <div className="text-xs text-text-secondary">{a.result}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {revealed >= ATTEMPTS.length && (
+            <div className="p-4 bg-surface-highlight rounded-xl space-y-1">
+              <div className="flex items-center gap-2 font-bold text-primary-accent">
+                <EyeOff className="w-5 h-5" /> Receipt-free — proof is impossible
+              </div>
+              <p className="text-sm text-text-secondary">
+                Your browser remembers you picked <strong>{OPTIONS[choice]}</strong> — but that is just a memory, not proof.
+                A briber, an employer, or a whale gets only your word, which is worthless to them. The vote-buying market cannot clear.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
@@ -308,7 +386,7 @@ export const HowItWorks = () => {
               { title: 'Create', desc: 'DAO members draft a proposal with title, options, deadline, quorum. Optionally add an IPFS description hash and enable weighted voting.', badge: 'On-chain' },
               { title: 'Encrypt', desc: 'Each voter selects an option. The CoFHE SDK encrypts the choice locally via TFHE WASM and generates a ZK proof — all before the transaction is sent.', badge: 'Browser → WASM' },
               { title: 'Submit', desc: 'The encrypted ballot (InEuint32: ctHash + signature) is sent on-chain. The contract calls FHE.asEuint32 → eq → select → add — all on ciphertext.', badge: 'Fhenix CoFHE' },
-              { title: 'Verify', desc: 'Any time during voting, a voter can request FHE.allowSender on their own ballot. With an EIP-712 permit, they decrypt their own choice — nobody else can.', badge: 'Self-only' },
+              { title: 'Receipt-Free', desc: 'ShadowDAO keeps no decryptable copy of your ballot and grants no permit over it. You can confirm your vote was recorded (participation is public), but nobody — including you — can prove which option you chose. That is what makes the vote coercion-resistant.', badge: 'Coercion-resistant' },
               { title: 'Reveal', desc: 'After deadline + quorum: FHE.allowPublic unlocks aggregate tallies. Anyone calls revealResults. Individual votes remain encrypted forever.', badge: 'Public' },
             ].map((step, i) => (
               <div key={i} className="flex gap-6">
@@ -369,9 +447,21 @@ export const HowItWorks = () => {
           </div>
         </section>
 
-        {/* Section 6: Verify */}
+        {/* Section 6: Receipt-Free Test */}
         <section className="space-y-8">
-          <h2 className="text-2xl font-bold">6. How to Verify FHE is Real</h2>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold">6. The Receipt-Free Test</h2>
+            <p className="text-text-secondary">
+              Coercion resistance means you cannot prove your own vote — not even if you want to.
+              That is what kills vote-buying. Try to break it below.
+            </p>
+          </div>
+          <ReceiptFreeDemo />
+        </section>
+
+        {/* Section 7: Verify FHE is real */}
+        <section className="space-y-8">
+          <h2 className="text-2xl font-bold">7. How to Verify FHE is Real</h2>
           <div className="grid md:grid-cols-2 gap-4">
             {[
               { n: '1', title: 'Read the contract source', desc: 'Etherscan → imports @fhenixprotocol/cofhe-contracts/FHE.sol. Not a simulation.' },

@@ -27,8 +27,20 @@ export interface Proposal {
   weighted?: boolean;
   spaceId: bigint;
   spaceGated: boolean;
+  /** True if this proposal uses anonymous Semaphore ZK voting (V2, Wave 5) */
+  isAnonymous?: boolean;
   /** Derived status */
   status: 'VOTING' | 'ENDED' | 'REVEALED' | 'CANCELLED';
+}
+
+/** Semaphore v4 zero-knowledge proof — pass to ShadowVoteClient.voteAnonymous() */
+export interface SemaphoreProof {
+  merkleTreeDepth: bigint;
+  merkleTreeRoot: bigint;
+  nullifier: bigint;
+  message: bigint;
+  scope: bigint;
+  points: readonly bigint[];
 }
 
 /** DAO Space as returned by ShadowSpace.getSpace() */

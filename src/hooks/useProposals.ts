@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
-import { SHADOWVOTE_ADDRESS, SHADOWVOTE_ABI } from '../config/contract';
+import { SHADOWVOTEV2_ADDRESS, SHADOWVOTEV2_ABI } from '../config/contract';
 
 export type ProposalStatus = 'VOTING' | 'ENDED' | 'REVEALED' | 'CANCELLED';
 
@@ -8,11 +8,14 @@ export interface Proposal {
   id: bigint;
   creator: string;
   title: string;
+  descriptionHash: string;
   optionCount: number;
   deadline: Date;
   quorum: bigint;
   voterCount: bigint;
   revealed: boolean;
+  weighted: boolean;
+  isAnonymous: boolean;
   status: ProposalStatus;
   spaceId: bigint;
   spaceGated: boolean;
@@ -48,8 +51,8 @@ export function useProposals() {
       setError(null);
 
       const count = (await publicClient.readContract({
-        address: SHADOWVOTE_ADDRESS,
-        abi: SHADOWVOTE_ABI,
+        address: SHADOWVOTEV2_ADDRESS,
+        abi: SHADOWVOTEV2_ABI,
         functionName: 'getProposalCount',
       } as any)) as bigint;
 
@@ -62,8 +65,8 @@ export function useProposals() {
         for (let i = start; i < end; i++) {
           batch.push(
             publicClient.readContract({
-              address: SHADOWVOTE_ADDRESS,
-              abi: SHADOWVOTE_ABI,
+              address: SHADOWVOTEV2_ADDRESS,
+              abi: SHADOWVOTEV2_ABI,
               functionName: 'getProposal',
               args: [i],
             } as any)
@@ -73,17 +76,26 @@ export function useProposals() {
       }
 
       const fetchedProposals: Proposal[] = results.map((result: any, index) => {
-        const [creator, title, optionCount, deadline, quorum, voterCount, revealed, spaceId, spaceGated] = result;
+        // ShadowVoteV2.getProposal returns 12 fields (Wave 5 adds isAnonymous):
+        // creator, title, descriptionHash, optionCount, deadline, quorum,
+        // voterCount, revealed, weighted, spaceId, spaceGated, isAnonymous
+        const [
+          creator, title, descriptionHash, optionCount, deadline, quorum,
+          voterCount, revealed, weighted, spaceId, spaceGated, isAnonymous,
+        ] = result;
         const deadlineDate = new Date(Number(deadline) * 1000);
         return {
           id: BigInt(index),
           creator,
           title,
+          descriptionHash: descriptionHash ?? '0x',
           optionCount: Number(optionCount),
           deadline: deadlineDate,
           quorum,
           voterCount,
           revealed,
+          weighted: weighted ?? false,
+          isAnonymous: isAnonymous ?? false,
           status: getStatus(deadlineDate, revealed, Number(optionCount)),
           spaceId: spaceId ?? 0n,
           spaceGated: spaceGated ?? false,
@@ -106,8 +118,8 @@ export function useProposals() {
       if (!publicClient || !address) return false;
       try {
         return (await publicClient.readContract({
-          address: SHADOWVOTE_ADDRESS,
-          abi: SHADOWVOTE_ABI,
+          address: SHADOWVOTEV2_ADDRESS,
+          abi: SHADOWVOTEV2_ABI,
           functionName: 'hasUserVoted',
           args: [proposalId, address],
         } as any)) as boolean;
@@ -122,8 +134,8 @@ export function useProposals() {
     if (!publicClient || !address) return [];
     try {
       return (await publicClient.readContract({
-        address: SHADOWVOTE_ADDRESS,
-        abi: SHADOWVOTE_ABI,
+        address: SHADOWVOTEV2_ADDRESS,
+        abi: SHADOWVOTEV2_ABI,
         functionName: 'getUserProposals',
         args: [address],
       } as any)) as bigint[];
@@ -136,8 +148,8 @@ export function useProposals() {
     if (!publicClient || !address) return [];
     try {
       return (await publicClient.readContract({
-        address: SHADOWVOTE_ADDRESS,
-        abi: SHADOWVOTE_ABI,
+        address: SHADOWVOTEV2_ADDRESS,
+        abi: SHADOWVOTEV2_ABI,
         functionName: 'getUserVotes',
         args: [address],
       } as any)) as bigint[];
@@ -152,8 +164,8 @@ export function useProposals() {
       if (!publicClient) return [];
       try {
         return (await publicClient.readContract({
-          address: SHADOWVOTE_ADDRESS,
-          abi: SHADOWVOTE_ABI,
+          address: SHADOWVOTEV2_ADDRESS,
+          abi: SHADOWVOTEV2_ABI,
           functionName: 'getProposalsBySpace',
           args: [spaceId],
         } as any)) as bigint[];

@@ -30,6 +30,7 @@ export function useCreateProposal() {
       // V2 extra params
       descriptionHash: `0x${string}` = '0x0000000000000000000000000000000000000000000000000000000000000000',
       weighted: boolean = false,
+      anonymous: boolean = false,
     ) => {
       try {
         setError(null);
@@ -51,6 +52,7 @@ export function useCreateProposal() {
               weighted,
               spaceId,
               spaceGated,
+              anonymous,
             ],
           } as any);
         } else {
