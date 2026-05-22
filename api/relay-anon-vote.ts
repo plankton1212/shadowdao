@@ -1,39 +1,38 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createWalletClient, http, parseSignature, isAddress } from 'viem';
+import { createWalletClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { checkRateLimit, getClientIp } from './_ratelimit';
 
 /**
- * POST /api/relay-vote
+ * POST /api/relay-anon-vote  —  Wave 5 anonymous gasless voting relay.
  *
- * Gasless voting relay — submits a voteWithSignature() transaction on behalf of the voter.
- * The voter signs an EIP-712 typed message in the browser; the relayer pays gas.
- *
- * Rate limit: 5 requests / 60s per IP (relayer pays gas, must be strict)
- * CORS: restricted to deployed domain (ALLOWED_ORIGIN env var)
+ * Submits voteAnonymous() on behalf of the voter. Eligibility is carried
+ * entirely by the Semaphore zero-knowledge proof, so the voter's wallet
+ * address NEVER touches the chain — not as a signer, not as msg.sender.
+ * The relayer account is msg.sender and pays gas. This is the transport
+ * layer that makes the vote fully anonymous end-to-end.
  *
  * Body:
- *   proposalId    string   — proposal ID (BigInt as string)
- *   encryptedVote object   — { ctHash, signature, securityZone, utype }
- *   nonce         string   — voter's current nonce from contract
- *   signature     string   — EIP-712 signature (hex, 65 bytes)
- *   voter         string   — voter's Ethereum address
+ *   proposalId    string  — proposal ID (decimal string)
+ *   encryptedVote object  — { ctHash, securityZone, utype, signature }
+ *   proof         object  — Semaphore proof: { merkleTreeDepth, merkleTreeRoot,
+ *                           nullifier, message, scope, points[8] } (decimal strings)
  *
- * Returns: { hash: string, relayer: string }
+ * Returns: { hash, relayer }
  *
  * Environment variables (Vercel dashboard):
  *   RELAYER_PRIVATE_KEY  = 0x...  (account that pays gas — keep funded on Sepolia)
  *   SEPOLIA_RPC_URL      = https://...
  *   ALLOWED_ORIGIN       = https://shadowdao.vercel.app
+ *   SHADOWVOTEV2_ADDRESS = 0x...  (optional — defaults to the bundled address)
  */
 
-const SHADOWVOTEV2_ADDRESS = (process.env.SHADOWVOTEV2_ADDRESS
-  ?? '0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa') as `0x${string}`;
+const DEFAULT_SHADOWVOTEV2 = '0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa';
 
 const RELAY_ABI = [
   {
-    name: 'voteWithSignature',
+    name: 'voteAnonymous',
     type: 'function' as const,
     stateMutability: 'nonpayable' as const,
     inputs: [
@@ -43,15 +42,23 @@ const RELAY_ABI = [
         type: 'tuple' as const,
         components: [
           { name: 'ctHash', type: 'uint256' as const },
-          { name: 'signature', type: 'bytes' as const },
           { name: 'securityZone', type: 'uint8' as const },
           { name: 'utype', type: 'uint8' as const },
+          { name: 'signature', type: 'bytes' as const },
         ],
       },
-      { name: '_nonce', type: 'uint256' as const },
-      { name: 'v', type: 'uint8' as const },
-      { name: 'r', type: 'bytes32' as const },
-      { name: 's', type: 'bytes32' as const },
+      {
+        name: '_proof',
+        type: 'tuple' as const,
+        components: [
+          { name: 'merkleTreeDepth', type: 'uint256' as const },
+          { name: 'merkleTreeRoot', type: 'uint256' as const },
+          { name: 'nullifier', type: 'uint256' as const },
+          { name: 'message', type: 'uint256' as const },
+          { name: 'scope', type: 'uint256' as const },
+          { name: 'points', type: 'uint256[8]' as const },
+        ],
+      },
     ],
     outputs: [],
   },
@@ -83,6 +90,11 @@ function log(level: 'info' | 'warn' | 'error', msg: string, data?: object) {
   else console.log(JSON.stringify(entry));
 }
 
+/** Validate a decimal-string field and return it, or null if invalid. */
+function decStr(v: unknown): string | null {
+  return typeof v === 'string' && /^\d+$/.test(v) ? v : null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = corsHeaders(req);
 
@@ -90,7 +102,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
     return res.status(200).end();
   }
-
   Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
 
   if (req.method !== 'POST') {
@@ -102,42 +113,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { allowed, remaining, resetIn } = checkRateLimit(ip, { maxRequests: 5, windowMs: 60_000 });
   res.setHeader('X-RateLimit-Remaining', String(remaining));
   res.setHeader('X-RateLimit-Reset', String(resetIn));
-
   if (!allowed) {
-    log('warn', 'Rate limit exceeded on relay-vote', { ip });
+    log('warn', 'Rate limit exceeded on relay-anon-vote', { ip });
     return res.status(429).json({ error: `Rate limit exceeded. Try again in ${resetIn}s.` });
   }
 
   const RELAYER_PRIVATE_KEY = process.env.RELAYER_PRIVATE_KEY;
   const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL;
-
   if (!RELAYER_PRIVATE_KEY || !SEPOLIA_RPC_URL) {
-    log('error', 'Relay not configured — missing RELAYER_PRIVATE_KEY or SEPOLIA_RPC_URL');
+    log('error', 'Anon relay not configured — missing RELAYER_PRIVATE_KEY or SEPOLIA_RPC_URL');
     return res.status(503).json({
-      error: 'Gasless relay not configured',
+      error: 'Anonymous gasless relay not configured',
       hint: 'Add RELAYER_PRIVATE_KEY and SEPOLIA_RPC_URL to Vercel Environment Variables',
     });
   }
 
-  const { proposalId, encryptedVote, nonce, signature, voter } = req.body ?? {};
+  const { proposalId, encryptedVote, proof } = req.body ?? {};
 
-  if (!proposalId || typeof proposalId !== 'string' || !/^\d+$/.test(proposalId)) {
+  const pid = decStr(proposalId);
+  if (!pid) {
     return res.status(400).json({ error: 'Invalid: proposalId must be a non-negative integer string' });
   }
-  if (!nonce || typeof nonce !== 'string' || !/^\d+$/.test(nonce)) {
-    return res.status(400).json({ error: 'Invalid: nonce must be a non-negative integer string' });
+  if (!encryptedVote || typeof encryptedVote !== 'object' || typeof encryptedVote.ctHash !== 'string') {
+    return res.status(400).json({ error: 'Missing or invalid: encryptedVote { ctHash, ... }' });
   }
-  if (!signature || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
-    return res.status(400).json({ error: 'Invalid: signature must be a 65-byte hex string (0x + 130 chars)' });
+  if (!proof || typeof proof !== 'object') {
+    return res.status(400).json({ error: 'Missing: Semaphore proof object' });
   }
-  if (!voter || !isAddress(voter)) {
-    return res.status(400).json({ error: 'Invalid: voter must be a valid Ethereum address' });
+  const proofFields = ['merkleTreeDepth', 'merkleTreeRoot', 'nullifier', 'message', 'scope'] as const;
+  for (const f of proofFields) {
+    if (decStr(proof[f]) === null) {
+      return res.status(400).json({ error: `Invalid: proof.${f} must be a non-negative integer string` });
+    }
   }
-  if (!encryptedVote || typeof encryptedVote !== 'object') {
-    return res.status(400).json({ error: 'Missing: encryptedVote object' });
-  }
-  if (!encryptedVote.ctHash || typeof encryptedVote.ctHash !== 'string') {
-    return res.status(400).json({ error: 'Missing: encryptedVote.ctHash' });
+  if (!Array.isArray(proof.points) || proof.points.length !== 8 || proof.points.some((p: unknown) => decStr(p) === null)) {
+    return res.status(400).json({ error: 'Invalid: proof.points must be 8 non-negative integer strings' });
   }
 
   try {
@@ -148,35 +158,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       transport: http(SEPOLIA_RPC_URL),
     });
 
-    // Split 65-byte EIP-712 signature into v, r, s components
-    const { v, r, s } = parseSignature(signature as `0x${string}`);
+    const shadowVoteV2 = (process.env.SHADOWVOTEV2_ADDRESS ?? DEFAULT_SHADOWVOTEV2) as `0x${string}`;
 
     const hash = await walletClient.writeContract({
-      address: SHADOWVOTEV2_ADDRESS,
+      address: shadowVoteV2,
       abi: RELAY_ABI,
-      functionName: 'voteWithSignature',
+      functionName: 'voteAnonymous',
       chain: sepolia,
       account,
       args: [
-        BigInt(proposalId),
+        BigInt(pid),
         {
           ctHash: BigInt(encryptedVote.ctHash),
-          signature: (encryptedVote.signature ?? '0x') as `0x${string}`,
           securityZone: Number(encryptedVote.securityZone ?? 0),
           utype: Number(encryptedVote.utype ?? 0),
+          signature: (encryptedVote.signature ?? '0x') as `0x${string}`,
         },
-        BigInt(nonce),
-        Number(v),
-        r,
-        s,
+        {
+          merkleTreeDepth: BigInt(proof.merkleTreeDepth),
+          merkleTreeRoot: BigInt(proof.merkleTreeRoot),
+          nullifier: BigInt(proof.nullifier),
+          message: BigInt(proof.message),
+          scope: BigInt(proof.scope),
+          points: proof.points.map((p: string) => BigInt(p)) as [
+            bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint,
+          ],
+        },
       ],
     });
 
-    log('info', 'Gasless vote relayed', { hash, proposalId, voter, relayer: account.address });
+    // Deliberately log NO voter identity — there is none. Only the nullifier,
+    // which is unlinkable to any address.
+    log('info', 'Anonymous vote relayed', { hash, proposalId: pid, relayer: account.address });
     return res.status(200).json({ hash, relayer: account.address });
   } catch (err: any) {
     const msg = err.shortMessage ?? err.message ?? 'Unknown relay error';
-    log('error', 'Relay tx failed', { message: msg, voter, proposalId });
+    log('error', 'Anon relay tx failed', { message: msg, proposalId: pid });
     return res.status(500).json({ error: msg });
   }
 }
