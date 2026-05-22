@@ -2,11 +2,14 @@
 pragma solidity ^0.8.25;
 
 import {FHE, euint32, InEuint32, ebool} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ISemaphore} from "./ISemaphore.sol";
 
-/// @dev Minimal interface to ShadowSpace for membership checks.
+/// @dev Minimal interface to ShadowSpace for membership and ZK group lookups.
 interface IShadowSpaceV2 {
     function isSpaceMember(uint256 _spaceId, address _user) external view returns (bool);
     function incrementProposalCount(uint256 _spaceId) external;
+    function spaceGroupId(uint256 _spaceId) external view returns (uint256);
+    function spaceHasGroup(uint256 _spaceId) external view returns (bool);
 }
 
 /// @title ShadowVoteV2  -  FHE-encrypted voting with weighted votes, IPFS proposals, discussion, gasless meta-tx
@@ -15,6 +18,8 @@ interface IShadowSpaceV2 {
 ///   - IPFS description hash per proposal  -  Wave 3
 ///   - On-chain discussion (IPFS comment hashes)  -  Wave 4
 ///   - EIP-712 meta-transactions for gasless voting  -  Wave 5
+///   - Receipt-free ballots: no decryptable per-voter copy  -  Wave 5 (coercion resistance)
+///   - Anonymous voting: Semaphore ZK eligibility, no msg.sender link  -  Wave 5
 ///   Total FHE ops: 15 distinct operations (adds FHE.mul over V1's 13)
 contract ShadowVoteV2 {
     struct Proposal {
@@ -29,6 +34,7 @@ contract ShadowVoteV2 {
         bool weighted;           // true = FHE.mul applied (weighted voting)
         uint256 spaceId;
         bool spaceGated;
+        bool isAnonymous;        // true = Semaphore ZK voting, no msg.sender link
     }
 
     struct Comment {
@@ -40,12 +46,15 @@ contract ShadowVoteV2 {
     // --- Access control ---
     address public owner;
     address public shadowSpaceContract;
+    /// @notice Semaphore protocol contract  -  powers anonymous voting (Wave 5).
+    ISemaphore public semaphore;
+    /// @notice ShadowToken  -  trustless source of weighted-voting power (Wave 5).
+    address public shadowToken;
 
     // --- Proposals ---
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(uint8 => euint32)) private tallies;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
-    mapping(uint256 => mapping(address => euint32)) private userEncryptedVotes;
     mapping(address => uint256[]) private userProposals;
     mapping(address => uint256[]) private userVotes;
     mapping(uint256 => uint256[]) private spaceProposals;
@@ -77,14 +86,17 @@ contract ShadowVoteV2 {
         uint256 quorum,
         bool weighted,
         uint256 spaceId,
-        bool spaceGated
+        bool spaceGated,
+        bool isAnonymous
     );
     event VoteCast(uint256 indexed proposalId, address indexed voter);
+    event AnonymousVoteCast(uint256 indexed proposalId, uint256 nullifier);
     event MetaVoteCast(uint256 indexed proposalId, address indexed voter, address indexed relayer);
     event ResultsRevealed(uint256 indexed proposalId);
     event ProposalCancelled(uint256 indexed proposalId, address indexed creator);
     event DeadlineExtended(uint256 indexed proposalId, uint256 newDeadline);
     event VotingPowerSet(address indexed voter);
+    event VotingPowerSynced(address indexed voter);
     event CommentPosted(uint256 indexed proposalId, address indexed author, bytes32 ipfsHash, uint256 blockNumber);
 
     modifier onlyOwner() {
@@ -111,6 +123,18 @@ contract ShadowVoteV2 {
         shadowSpaceContract = _shadowSpace;
     }
 
+    /// @notice Wire the Semaphore protocol contract used for anonymous voting.
+    function setSemaphore(address _semaphore) external onlyOwner {
+        require(_semaphore != address(0), "Zero address");
+        semaphore = ISemaphore(_semaphore);
+    }
+
+    /// @notice Wire the ShadowToken contract used as a trustless weight source.
+    function setShadowToken(address _shadowToken) external onlyOwner {
+        require(_shadowToken != address(0), "Zero address");
+        shadowToken = _shadowToken;
+    }
+
     /// @notice Admin sets a voter's encrypted voting power.
     ///         Only voter can decrypt their own power via FHE.allowSender permit.
     function setVotingPower(address voter, InEuint32 calldata _encryptedPower) external onlyOwner {
@@ -120,6 +144,18 @@ contract ShadowVoteV2 {
         votingPowers[voter] = power;
         hasPower[voter] = true;
         emit VotingPowerSet(voter);
+    }
+
+    /// @notice Receive a voter's encrypted voting power from the ShadowToken
+    ///         contract. Wave 5: the trustless alternative to admin setVotingPower
+    ///         above  -  the power is the holder's own encrypted token balance,
+    ///         pushed in via ShadowToken.syncVotingPower().
+    function receiveVotingPower(address voter, euint32 power) external {
+        require(shadowToken != address(0) && msg.sender == shadowToken, "Only ShadowToken");
+        FHE.allowThis(power);
+        votingPowers[voter] = power;
+        hasPower[voter] = true;
+        emit VotingPowerSynced(voter);
     }
 
     // --- Core: Create ---
@@ -132,7 +168,8 @@ contract ShadowVoteV2 {
         uint256 _quorum,
         bool _weighted,
         uint256 _spaceId,
-        bool _spaceGated
+        bool _spaceGated,
+        bool _anonymous
     ) external returns (uint256) {
         require(_optionCount >= 2 && _optionCount <= 10, "Invalid option count");
         require(_deadline > block.timestamp, "Deadline must be in the future");
@@ -141,6 +178,17 @@ contract ShadowVoteV2 {
             require(
                 IShadowSpaceV2(shadowSpaceContract).isSpaceMember(_spaceId, msg.sender),
                 "Not a space member"
+            );
+        }
+
+        if (_anonymous) {
+            require(_spaceGated, "Anonymous proposals must be space-gated");
+            require(!_weighted, "Anonymous proposals cannot be weighted");
+            require(address(semaphore) != address(0), "Semaphore not set");
+            require(shadowSpaceContract != address(0), "Space contract not set");
+            require(
+                IShadowSpaceV2(shadowSpaceContract).spaceHasGroup(_spaceId),
+                "Space has no Semaphore group"
             );
         }
 
@@ -157,7 +205,8 @@ contract ShadowVoteV2 {
             revealed: false,
             weighted: _weighted,
             spaceId: _spaceGated ? _spaceId : 0,
-            spaceGated: _spaceGated
+            spaceGated: _spaceGated,
+            isAnonymous: _anonymous
         });
 
         for (uint8 i = 0; i < _optionCount; i++) {
@@ -178,7 +227,7 @@ contract ShadowVoteV2 {
         emit ProposalCreated(
             proposalId, msg.sender, _title, _descriptionHash,
             _optionCount, _deadline, _quorum, _weighted,
-            _spaceGated ? _spaceId : 0, _spaceGated
+            _spaceGated ? _spaceId : 0, _spaceGated, _anonymous
         );
         return proposalId;
     }
@@ -223,6 +272,7 @@ contract ShadowVoteV2 {
         require(!hasVoted[_proposalId][voter], "Already voted");
         require(block.timestamp <= proposal.deadline, "Voting ended");
         require(proposal.optionCount > 0, "Proposal does not exist");
+        require(!proposal.isAnonymous, "Anonymous proposal: use voteAnonymous");
 
         if (proposal.spaceGated && shadowSpaceContract != address(0)) {
             require(
@@ -258,12 +308,61 @@ contract ShadowVoteV2 {
             FHE.allowThis(tallies[_proposalId][i]);
         }
 
-        userEncryptedVotes[_proposalId][voter] = option;
-        FHE.allowSender(userEncryptedVotes[_proposalId][voter]);
+        // Wave 5  -  Receipt-freeness: the contract deliberately keeps NO
+        // decryptable copy of the individual ballot and grants the voter no
+        // FHE permit over it. A voter therefore cannot produce a verifiable
+        // proof of how they voted, which is what makes the ballot coercion-
+        // resistant against vote buying. Participation stays publicly
+        // verifiable via `hasVoted`; only the *choice* is unprovable.
 
         hasVoted[_proposalId][voter] = true;
         proposal.voterCount++;
         userVotes[voter].push(_proposalId);
+    }
+
+    /// @notice Cast an anonymous, coercion-resistant vote on an anonymous proposal.
+    /// @dev    Eligibility is proven in zero knowledge via Semaphore: the caller
+    ///         proves membership of the space's group without revealing which
+    ///         member they are. The nullifier (scoped to this proposal) prevents
+    ///         double-voting. msg.sender is irrelevant for eligibility, so the
+    ///         gasless relayer  -  or anyone  -  may submit. The ballot stays
+    ///         FHE-encrypted and receipt-free.
+    function voteAnonymous(
+        uint256 _proposalId,
+        InEuint32 calldata _encryptedOption,
+        ISemaphore.SemaphoreProof calldata _proof
+    ) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(proposal.optionCount > 0, "Proposal does not exist");
+        require(proposal.isAnonymous, "Not an anonymous proposal");
+        require(block.timestamp <= proposal.deadline, "Voting ended");
+        require(address(semaphore) != address(0), "Semaphore not set");
+        require(shadowSpaceContract != address(0), "Space contract not set");
+
+        uint256 groupId = IShadowSpaceV2(shadowSpaceContract).spaceGroupId(proposal.spaceId);
+
+        // Bind the proof to THIS proposal: scope = message = proposalId, so the
+        // Semaphore nullifier is unique per (identity, proposal)  -  one anonymous
+        // vote per member per proposal. (proposalId is a small counter, always a
+        // valid SNARK field element  -  unlike a full-width FHE ctHash.)
+        require(_proof.scope == _proposalId, "Proof scope must equal proposalId");
+        require(_proof.message == _proposalId, "Proof message must equal proposalId");
+
+        // Verify ZK membership and consume the nullifier. Reverts if the proof
+        // is invalid or the nullifier was already used (double-vote protection).
+        semaphore.validateProof(groupId, _proof);
+
+        // Tally on ciphertext. Anonymous votes are unweighted: one member = one vote.
+        euint32 option = FHE.asEuint32(_encryptedOption);
+        for (uint8 i = 0; i < proposal.optionCount; i++) {
+            ebool isMatch = FHE.eq(option, FHE.asEuint32(i));
+            euint32 increment = FHE.select(isMatch, FHE.asEuint32(1), FHE.asEuint32(0));
+            tallies[_proposalId][i] = FHE.add(tallies[_proposalId][i], increment);
+            FHE.allowThis(tallies[_proposalId][i]);
+        }
+
+        proposal.voterCount++;
+        emit AnonymousVoteCast(_proposalId, _proof.nullifier);
     }
 
     // --- Reveal ---
@@ -397,22 +496,21 @@ contract ShadowVoteV2 {
         bool revealed,
         bool weighted,
         uint256 spaceId,
-        bool spaceGated
+        bool spaceGated,
+        bool isAnonymous
     ) {
         Proposal storage p = proposals[_proposalId];
         return (p.creator, p.title, p.descriptionHash, p.optionCount, p.deadline,
-                p.quorum, p.voterCount, p.revealed, p.weighted, p.spaceId, p.spaceGated);
+                p.quorum, p.voterCount, p.revealed, p.weighted, p.spaceId, p.spaceGated, p.isAnonymous);
     }
 
     function getEncryptedTally(uint256 _proposalId, uint8 _optionIndex) external view returns (euint32) {
         return tallies[_proposalId][_optionIndex];
     }
 
-    function getMyVote(uint256 _proposalId) external view returns (euint32) {
-        require(hasVoted[_proposalId][msg.sender], "Not voted");
-        return userEncryptedVotes[_proposalId][msg.sender];
-    }
-
+    /// @notice Receipt-free by design (Wave 5): there is no getMyVote().
+    ///         A voter can confirm *participation* via hasUserVoted(), but
+    ///         neither they nor anyone else can decrypt an individual ballot.
     function hasUserVoted(uint256 _proposalId, address _user) external view returns (bool) {
         return hasVoted[_proposalId][_user];
     }
