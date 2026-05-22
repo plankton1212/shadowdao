@@ -169,7 +169,10 @@ ShadowDAO uses **16 distinct FHE operations** across 4 contracts — one of the 
 - **Proposal Search**: full-text + status + space + sort + date range
 - → **16 FHE ops total**
 
-### Wave 5 ✅ — SDK + Gasless + PWA + Final Polish
+### Wave 5 ✅ — Coercion Resistance + SDK + Gasless + PWA
+- **Receipt-free ballots**: ShadowVoteV2 keeps no decryptable per-voter copy and grants no FHE permit over a ballot — a vote cannot be sold or proven to a coercer (see `docs/COERCION-RESISTANCE.md`)
+- **Anonymous voting**: `voteAnonymous()` verifies a Semaphore zero-knowledge membership proof + per-proposal nullifier; ShadowSpace runs a Semaphore group per space; routed through `/api/relay-anon-vote` so the voter's address never touches the chain
+- **ShadowToken**: confidential FHERC20 (encrypted euint32 balances) — a trustless source of weighted-voting power via `syncVotingPower()`, replacing admin-assigned power
 - **Gasless EIP-712**: `voteWithSignature()` in ShadowVoteV2 + `/api/relay-vote` Vercel function + frontend toggle in ProposalDetail — user signs typed data, relayer submits tx and pays gas
 - **shadowdao-sdk**: `ShadowVoteClient`, `ShadowSpaceClient`, `useShadowVote` hook, full TypeScript types
 - **PWA**: manifest.json + service worker + offline fallback page
@@ -207,15 +210,16 @@ ShadowDAO uses **16 distinct FHE operations** across 4 contracts — one of the 
 | Contract | Address | FHE Operations |
 |----------|---------|---------------|
 | **ShadowVote.sol** | [`0x625b9b6cBd467E69b4981457e7235EBd2874EF86`](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) | 10 FHE ops + space-gated voting |
-| **ShadowSpace.sol** | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | DAO registry + cross-contract ACL |
+| **ShadowSpace.sol** | [`0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E`](https://sepolia.etherscan.io/address/0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E) | DAO registry + cross-contract ACL + Semaphore ZK groups |
 
-### Wave 3-5 (Deploy pending — addresses below update post-deployment)
+### Wave 3-5 (Live)
 
 | Contract | Address | FHE Operations |
 |----------|---------|---------------|
-| **ShadowVoteV2.sol** | [`0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA`](https://sepolia.etherscan.io/address/0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA) | 11 FHE ops: weighted FHE.mul, IPFS desc, discussion, gasless EIP-712 |
+| **ShadowVoteV2.sol** | [`0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa`](https://sepolia.etherscan.io/address/0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa) | weighted FHE.mul, IPFS desc, discussion, gasless EIP-712, receipt-free + anonymous ZK voting |
 | **ShadowTreasury.sol** | [`0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db`](https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db) | 5 FHE ops: euint32 balance, FHE.add/gte/sub/select |
 | **ShadowDelegate.sol** | [`0x2a896334a0B1263f397A45844a307D4cF90cb5f1`](https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1) | 3 FHE ops: FHE.add pool, FHE.select zero-out, FHE.allowSender |
+| **ShadowToken.sol** | [`0x9a86031C1392033007eA928Fd6166B0C6eD5b238`](https://sepolia.etherscan.io/address/0x9a86031C1392033007eA928Fd6166B0C6eD5b238) | Confidential FHERC20: encrypted euint32 balances, FHE.add/gte/sub/select |
 
 ---
 
@@ -296,4 +300,6 @@ Any team can fork ShadowDAO and adapt it to their own FHE contract by changing *
 - **GitHub:** https://github.com/plankton1212/shadowdao
 - **Fhenix CoFHE Docs:** https://cofhe-docs.fhenix.zone
 - **ShadowVote Contract:** https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86
-- **ShadowSpace Contract:** https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88
+- **ShadowSpace Contract:** https://sepolia.etherscan.io/address/0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E
+- **ShadowVoteV2 Contract:** https://sepolia.etherscan.io/address/0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa
+- **ShadowToken Contract:** https://sepolia.etherscan.io/address/0x9a86031C1392033007eA928Fd6166B0C6eD5b238

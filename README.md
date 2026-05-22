@@ -11,10 +11,11 @@
 <p align="center">
   <a href="https://shadowdao.vercel.app">Live Demo</a> ·
   <a href="https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86">ShadowVote</a> ·
-  <a href="https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88">ShadowSpace</a> ·
-  <a href="https://sepolia.etherscan.io/address/0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA">ShadowVoteV2</a> ·
+  <a href="https://sepolia.etherscan.io/address/0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E">ShadowSpace</a> ·
+  <a href="https://sepolia.etherscan.io/address/0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa">ShadowVoteV2</a> ·
   <a href="https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db">ShadowTreasury</a> ·
   <a href="https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1">ShadowDelegate</a> ·
+  <a href="https://sepolia.etherscan.io/address/0x9a86031C1392033007eA928Fd6166B0C6eD5b238">ShadowToken</a> ·
   <a href="https://cofhe-docs.fhenix.zone">Fhenix Docs</a>
 </p>
 
@@ -268,10 +269,11 @@ Debugging encrypted state is a completely different discipline. You can't print 
 | Contract | Address | Wave | FHE Ops |
 |----------|---------|------|---------|
 | **ShadowVote.sol** | [`0x625b9b6cBd467E69b4981457e7235EBd2874EF86`](https://sepolia.etherscan.io/address/0x625b9b6cBd467E69b4981457e7235EBd2874EF86) | 1–2 | 10: asEuint32, eq, select, add, gte, max, sub, allowThis, allowPublic, allowSender |
-| **ShadowSpace.sol** | [`0x2B2A4370c5f26cB109D04047e018E65ddf413c88`](https://sepolia.etherscan.io/address/0x2B2A4370c5f26cB109D04047e018E65ddf413c88) | 1–2 | — (DAO registry, cross-contract ACL) |
-| **ShadowVoteV2.sol** | [`0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA`](https://sepolia.etherscan.io/address/0xD8037F77d1D5764f3639A6216a580Cd608fB7fAA) | 3–5 | +FHE.mul (weighted), IPFS desc, discussion, EIP-712 gasless |
+| **ShadowSpace.sol** | [`0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E`](https://sepolia.etherscan.io/address/0x96F2AEa4c7Cf81D47AF0A6fBDC1eAe7E3f4E299E) | 1–5 | DAO registry, cross-contract ACL, Semaphore ZK groups (W5) |
+| **ShadowVoteV2.sol** | [`0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa`](https://sepolia.etherscan.io/address/0xA45AD263C91c365b3F8170ebba8FCda7944fBaDa) | 3–5 | +FHE.mul weighted, IPFS desc, gasless EIP-712, receipt-free + anonymous ZK voting (W5) |
 | **ShadowTreasury.sol** | [`0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db`](https://sepolia.etherscan.io/address/0xc7E024c8259b4c0c9Cd3F5A7987E7E79ACf8b0db) | 3 | euint32 balance, FHE.add/gte/sub/select, FHE.allowSender |
 | **ShadowDelegate.sol** | [`0x2a896334a0B1263f397A45844a307D4cF90cb5f1`](https://sepolia.etherscan.io/address/0x2a896334a0B1263f397A45844a307D4cF90cb5f1) | 4 | FHE.add pool, FHE.select zero-out, FHE.allowSender |
+| **ShadowToken.sol** | [`0x9a86031C1392033007eA928Fd6166B0C6eD5b238`](https://sepolia.etherscan.io/address/0x9a86031C1392033007eA928Fd6166B0C6eD5b238) | 5 | Confidential FHERC20 — encrypted euint32 balances, trustless voting-power source |
 
 Chain ID 11155111 · Solidity 0.8.25 · EVM Cancun
 
@@ -288,7 +290,7 @@ Chain ID 11155111 · Solidity 0.8.25 · EVM Cancun
 ## Wave completion
 
 ### Wave 1 ✅ — Core FHE Voting
-ShadowVote.sol + ShadowSpace.sol deployed. FHE-encrypted ballots, homomorphic tallying, permissionless reveal, "Verify My Vote" via `FHE.allowSender`. **10 FHE operations.**
+ShadowVote.sol + ShadowSpace.sol deployed. FHE-encrypted ballots, homomorphic tallying, permissionless reveal. **10 FHE operations.**
 
 ### Wave 2 ✅ — Spaces + Cross-Contract ACL
 Space-gated voting — `vote()` enforces `IShadowSpace.isSpaceMember()` on-chain. Encrypted analytics: `FHE.gte`, `FHE.max`, `FHE.sub`. 60 E2E tests on Sepolia. Space lifecycle (join, leave, archive).
@@ -299,8 +301,13 @@ ShadowTreasury.sol: `euint32` encrypted balance, deposit/withdraw/allocate. Shad
 ### Wave 4 ✅ — Delegation + Analytics + Discussion
 ShadowDelegate.sol: encrypted power delegation pool. On-chain IPFS comment hashes. Analytics dashboard from `getLogs`. Activity feed, proposal search with date range filter, pagination. **16 FHE operations.**
 
-### Wave 5 ✅ — SDK + Gasless + PWA
-`voteWithSignature()` EIP-712 meta-tx. `shadowdao-sdk` npm package with TypeScript clients + React hook. PWA service worker. Lazy-loaded routes. Error boundary. `TEMPLATE.md` integration guide.
+### Wave 5 ✅ — Coercion Resistance + SDK + Gasless + PWA
+**Coercion resistance** — see [`docs/COERCION-RESISTANCE.md`](docs/COERCION-RESISTANCE.md):
+- **Receipt-free ballots** — no decryptable per-voter copy is stored and no FHE permit is granted over a ballot, so a vote cannot be sold or proven to a coercer.
+- **Anonymous voting** — eligibility is proven with a Semaphore zero-knowledge membership proof + per-proposal nullifier; routed through the gasless relayer, the voter's wallet address never touches the chain.
+- **ShadowToken** — a confidential FHERC20 whose encrypted balance is a trustless source of weighted-voting power, replacing admin-assigned power.
+
+Plus `voteWithSignature()` EIP-712 meta-tx, `shadowdao-sdk` npm package, PWA service worker, lazy-loaded routes, `TEMPLATE.md` integration guide.
 
 ---
 
