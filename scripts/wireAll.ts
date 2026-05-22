@@ -27,8 +27,15 @@ const V2_ADDRESS = process.env.SHADOWVOTEV2_ADDRESS! as `0x${string}`;
 const SPACE_ADDRESS = process.env.SHADOWSPACE_ADDRESS! as `0x${string}`;
 const TREASURY_ADDRESS = process.env.SHADOWTREASURY_ADDRESS! as `0x${string}`;
 const DELEGATE_ADDRESS = process.env.SHADOWDELEGATE_ADDRESS! as `0x${string}`;
+const TOKEN_ADDRESS = process.env.SHADOWTOKEN_ADDRESS as `0x${string}` | undefined;
+const SEMAPHORE_ADDRESS = (process.env.SEMAPHORE_ADDRESS
+  ?? '0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D') as `0x${string}`;
 
-const V2_ABI = parseAbi(['function setShadowSpaceContract(address) external']);
+const V2_ABI = parseAbi([
+  'function setShadowSpaceContract(address) external',
+  'function setSemaphore(address) external',
+  'function setShadowToken(address) external',
+]);
 const SPACE_ABI = parseAbi(['function setShadowVoteContract(address) external']);
 const TREASURY_ABI = parseAbi(['function setShadowVoteContract(address) external']);
 const DELEGATE_ABI = parseAbi(['function setShadowVoteContract(address) external']);
@@ -54,6 +61,17 @@ async function main() {
 
   // ShadowDelegate → ShadowVoteV2
   await wire('ShadowDelegate', DELEGATE_ADDRESS, DELEGATE_ABI, 'setShadowVoteContract', V2_ADDRESS);
+
+  // Wave 5: ShadowVoteV2 → Semaphore (anonymous voting)
+  await wire('ShadowVoteV2', V2_ADDRESS, V2_ABI, 'setSemaphore', SEMAPHORE_ADDRESS);
+
+  // Wave 5: ShadowVoteV2 → ShadowToken (trustless weighted-voting power)
+  if (TOKEN_ADDRESS) {
+    await wire('ShadowVoteV2', V2_ADDRESS, V2_ABI, 'setShadowToken', TOKEN_ADDRESS);
+  } else {
+    console.log('\n⚠ SHADOWTOKEN_ADDRESS not set — skipping setShadowToken.');
+    console.log('  Deploy ShadowToken (npm run deploy:token), set the env var, then re-run.');
+  }
 
   console.log('\n✅ All contracts wired successfully.');
   console.log('\nUpdate src/config/contract.ts with these addresses:');
