@@ -14,3 +14,8 @@ cache/
 typechain-types/
 
 .vercel
+
+# Wave 5+: hidden from public repo (kept locally for personal reference)
+*.md
+!README.md
+test/
