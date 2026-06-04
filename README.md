@@ -8,8 +8,6 @@
 
 <p align="center">
   <a href="https://shadowdao.vercel.app">🌐 Live Demo</a> ·
-  <a href="docs/COERCION-RESISTANCE.md">🔐 Threat Model</a> ·
-  <a href="HACKATHON.md">📋 Submission</a> ·
   <a href="https://cofhe-docs.fhenix.zone">📖 Fhenix Docs</a>
 </p>
 
@@ -68,8 +66,6 @@ ShadowDAO is the only design that closes **all three**:
 | **Ballot secrecy** | Can anyone read *what* you voted? | FHE — the tally is computed on ciphertext; individual votes are *never* decrypted |
 | **Receipt-freeness** | Can *you* prove your vote to a briber? | No decryptable copy is stored, no permit granted over a ballot — proof is impossible |
 | **Voter anonymity** | Can anyone see *that you* voted? | Semaphore zero-knowledge eligibility + a gasless relayer — your address never touches the chain |
-
-Full threat model: **[docs/COERCION-RESISTANCE.md](docs/COERCION-RESISTANCE.md)**.
 
 ---
 
@@ -262,7 +258,6 @@ src/                   React 19 dApp — 14 lazy-loaded pages
   config/contract.ts   single source of truth: addresses + ABIs
   hooks/               useAnonymousVote, useSemaphoreIdentity, useCofhe, useVote ...
 sdk/                   shadowdao-sdk — reusable TypeScript clients + React hook
-docs/                  COERCION-RESISTANCE.md (threat model) · WAVE5-DEPLOY.md
 ```
 
 **No backend database.** All governance state lives on-chain or on IPFS; only
@@ -310,21 +305,7 @@ Node.js 18+, MetaMask on Sepolia with test ETH ([faucet](https://www.alchemy.com
 npm run lint        # typecheck
 npm run compile     # compile contracts (Hardhat + CoFHE plugin)
 npm run build       # production build
-npm test            # E2E contract tests on Sepolia
 ```
-
-Contract tests need `.env` with `PRIVATE_KEY`, `PRIVATE_KEY_2`, `SEPOLIA_RPC_URL`.
-Deploying a fresh stack: see **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)**.
-
----
-
-## 📚 Docs
-
-- **[docs/DEEP-DIVE.md](docs/DEEP-DIVE.md)** — extended technical deep-dive: build story, engineering challenges, full FHE operation table, the 14-page UX walkthrough
-- **[docs/COERCION-RESISTANCE.md](docs/COERCION-RESISTANCE.md)** — full threat model: actors, guarantees, honest residual risks
-- **[docs/WAVE5-DEPLOY.md](docs/WAVE5-DEPLOY.md)** — deploy & verify runbook
-- **[HACKATHON.md](HACKATHON.md)** — buildathon submission summary
-- **[TEMPLATE.md](TEMPLATE.md)** — adapt ShadowDAO to any FHE voting contract
 
 ---
 
